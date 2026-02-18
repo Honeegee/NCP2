@@ -1,0 +1,1309 @@
+"use client";
+
+import { useEffect, useState, useCallback } from "react";
+import { useAuth } from "@/lib/auth-context";
+import { api, ApiError } from "@/lib/api-client";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { toast } from "sonner";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import {
+  Upload,
+  FileText,
+  User,
+  Briefcase,
+  Award,
+  GraduationCap,
+  CheckCircle,
+  Mail,
+  MapPin,
+  Phone,
+  Sparkles,
+  FileCheck,
+  Edit2,
+  Building2,
+  Plus,
+  Trash2,
+  Activity,
+  MoreVertical,
+  Eye,
+  Download,
+  Stethoscope,
+  HeartHandshake,
+} from "lucide-react";
+import type { ExperienceType } from "@/types";
+import type { NurseFullProfile, NurseExperience, NurseEducation, NurseSkill, NurseCertification } from "@/types";
+import ExperienceModal from "@/components/profile/modals/ExperienceModal";
+import EducationModal from "@/components/profile/modals/EducationModal";
+import SkillsModal from "@/components/profile/modals/SkillsModal";
+import CertificationsModal from "@/components/profile/modals/CertificationsModal";
+import ProfileEditModal from "@/components/profile/modals/ProfileEditModal";
+import { formatNurseName } from "@/lib/utils";
+
+export default function ProfilePage() {
+  const { user, refreshProfile } = useAuth();
+  const router = useRouter();
+  const [profile, setProfile] = useState<NurseFullProfile | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [uploadingPicture, setUploadingPicture] = useState(false);
+  const [profileEditModalOpen, setProfileEditModalOpen] = useState(false);
+
+  // Experience modal
+  const [experienceModalOpen, setExperienceModalOpen] = useState(false);
+  const [editingExperience, setEditingExperience] = useState<NurseExperience | null>(null);
+
+  // Education modal
+  const [educationModalOpen, setEducationModalOpen] = useState(false);
+  const [editingEducation, setEditingEducation] = useState<NurseEducation | null>(null);
+
+  // Skills modal
+  const [skillsModalOpen, setSkillsModalOpen] = useState(false);
+  const [editingSkill, setEditingSkill] = useState<NurseSkill | null>(null);
+
+  // Certifications modal
+  const [certificationsModalOpen, setCertificationsModalOpen] = useState(false);
+  const [editingCertification, setEditingCertification] = useState<NurseCertification | null>(null);
+
+  const fetchProfile = useCallback(async () => {
+    try {
+      const data = await api.get<NurseFullProfile>("/nurses/me");
+      setProfile(data);
+    } catch (error) {
+      console.error("Error fetching profile:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      fetchProfile();
+    }
+  }, [user, fetchProfile]);
+
+  const handleSaveProfile = async (data: {
+    first_name: string;
+    last_name: string;
+    phone: string;
+    address: string;
+    city: string;
+    country: string;
+    graduation_year: number | null;
+    bio: string;
+    professional_status: "registered_nurse" | "nursing_student" | null;
+  }) => {
+    if (!profile) return;
+    try {
+      await api.put("/nurses/" + profile.id, data);
+      toast.success("Profile updated successfully!");
+      setProfileEditModalOpen(false);
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to update profile";
+      toast.error(message);
+    }
+  };
+
+  const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !profile) return;
+
+    if (profile.resumes && profile.resumes.length > 0) {
+      if (!confirm("This will replace your existing resume. Continue?")) {
+        e.target.value = "";
+        return;
+      }
+    }
+
+    setUploading(true);
+
+    const fd = new FormData();
+    fd.append("file", file);
+    fd.append("profile_id", profile.id);
+
+    try {
+      const data = await api.upload<{ warning?: string; parsed_data?: unknown }>("/resumes/upload", fd);
+      const msg = data.warning
+        ? `Resume saved. Warning: ${data.warning}`
+        : data.parsed_data
+        ? "Resume uploaded and data extracted!"
+        : "Resume saved (no data could be extracted).";
+      toast.success(msg);
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Upload failed";
+      toast.error(message);
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
+
+  const getResumeUrl = async (resumeId: string) => {
+    const data = await api.get<{ url: string; filename: string }>("/resumes/" + resumeId);
+    return data;
+  };
+
+  const handleViewResume = async (resumeId: string) => {
+    try {
+      const { url } = await getResumeUrl(resumeId);
+      window.open(url, "_blank");
+    } catch {
+      toast.error("Could not open resume.");
+    }
+  };
+
+  const handleDownloadResume = async (resumeId: string, filename: string) => {
+    try {
+      const { url } = await getResumeUrl(resumeId);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+    } catch {
+      toast.error("Could not download resume.");
+    }
+  };
+
+  const handleDeleteResume = async (resumeId: string) => {
+    if (!confirm("Delete this resume? This won't remove data already extracted from it.")) return;
+
+    try {
+      await api.delete("/resumes/" + resumeId);
+      toast.success("Resume deleted.");
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to delete resume";
+      toast.error(message);
+    }
+  };
+
+  const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !profile) return;
+
+    setUploadingPicture(true);
+
+    const fd = new FormData();
+    fd.append("file", file);
+
+    try {
+      const data = await api.upload<{ message?: string }>("/nurses/me/profile-picture", fd);
+      toast.success(data.message || "Profile picture updated!");
+      fetchProfile();
+      await refreshProfile();
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Upload failed";
+      toast.error(message);
+    } finally {
+      setUploadingPicture(false);
+      e.target.value = "";
+    }
+  };
+
+  const handleDeleteProfilePicture = async () => {
+    if (!profile || !profile.profile_picture_url) return;
+
+    if (!confirm("Delete your profile picture?")) return;
+
+    setUploadingPicture(true);
+
+    try {
+      const data = await api.delete<{ message?: string }>("/nurses/me/profile-picture");
+      toast.success(data?.message || "Profile picture deleted!");
+      fetchProfile();
+      await refreshProfile();
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Delete failed";
+      toast.error(message);
+    } finally {
+      setUploadingPicture(false);
+    }
+  };
+
+  // Experience functions
+  const handleOpenExperienceModal = (exp?: NurseExperience) => {
+    if (exp) {
+      setEditingExperience(exp);
+    } else {
+      setEditingExperience(null);
+    }
+    setExperienceModalOpen(true);
+  };
+
+  const handleSaveExperience = async (data: {
+    employer: string;
+    position: string;
+    type: ExperienceType;
+    department: string;
+    start_date: string;
+    end_date: string;
+    description: string;
+  }) => {
+    if (!profile) return;
+    try {
+      if (editingExperience) {
+        await api.put("/nurses/me/experience/" + editingExperience.id, data);
+      } else {
+        await api.post("/nurses/me/experience", data);
+      }
+      toast.success(editingExperience ? "Experience updated!" : "Experience added!");
+      setExperienceModalOpen(false);
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Something went wrong";
+      toast.error(message);
+    }
+  };
+
+  const handleDeleteExperience = async (id: string) => {
+    if (!profile) return;
+    if (!confirm("Delete this experience?")) return;
+    try {
+      await api.delete("/nurses/me/experience/" + id);
+      toast.success("Experience deleted!");
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to delete experience";
+      toast.error(message);
+    }
+  };
+
+  // Education functions
+  const handleOpenEducationModal = (edu?: NurseEducation) => {
+    if (edu) {
+      setEditingEducation(edu);
+    } else {
+      setEditingEducation(null);
+    }
+    setEducationModalOpen(true);
+  };
+
+  const handleSaveEducation = async (data: {
+    institution: string;
+    degree: string;
+    field_of_study: string;
+    graduation_year: string;
+  }) => {
+    if (!profile) return;
+    try {
+      if (editingEducation) {
+        await api.put("/nurses/me/education/" + editingEducation.id, {
+          ...data,
+          graduation_year: data.graduation_year,
+        });
+      } else {
+        await api.post("/nurses/me/education", {
+          ...data,
+          graduation_year: data.graduation_year,
+        });
+      }
+      toast.success(editingEducation ? "Education updated!" : "Education added!");
+      setEducationModalOpen(false);
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Something went wrong";
+      toast.error(message);
+    }
+  };
+
+  const handleDeleteEducation = async (id: string) => {
+    if (!profile) return;
+    if (!confirm("Delete this education?")) return;
+    try {
+      await api.delete("/nurses/me/education/" + id);
+      toast.success("Education deleted!");
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to delete education";
+      toast.error(message);
+    }
+  };
+
+  // Skills functions
+  const handleOpenSkillsModal = (skill?: NurseSkill) => {
+    if (skill) {
+      setEditingSkill(skill);
+    } else {
+      setEditingSkill(null);
+    }
+    setSkillsModalOpen(true);
+  };
+
+  const handleSaveSkill = async (data: { skill_name: string }) => {
+    if (!profile) return;
+    try {
+      if (editingSkill) {
+        await api.put("/nurses/me/skills/" + editingSkill.id, {
+          skill_name: data.skill_name,
+          proficiency: "basic",
+        });
+      } else {
+        await api.post("/nurses/me/skills", {
+          skill_name: data.skill_name,
+          proficiency: "basic",
+        });
+      }
+      toast.success(editingSkill ? "Skill updated!" : "Skill added!");
+      setSkillsModalOpen(false);
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Something went wrong";
+      toast.error(message);
+    }
+  };
+
+  const handleDeleteSkill = async (id: string) => {
+    if (!profile) return;
+    if (!confirm("Delete this skill?")) return;
+    try {
+      await api.delete("/nurses/me/skills/" + id);
+      toast.success("Skill deleted!");
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to delete skill";
+      toast.error(message);
+    }
+  };
+
+  // Certifications functions
+  const handleOpenCertificationsModal = (cert?: NurseCertification) => {
+    if (cert) {
+      setEditingCertification(cert);
+    } else {
+      setEditingCertification(null);
+    }
+    setCertificationsModalOpen(true);
+  };
+
+  const handleSaveCertification = async (data: {
+    cert_type: string;
+    cert_number: string;
+    score: string;
+    issue_date: string;
+    expiry_date: string;
+    verified: boolean;
+  }) => {
+    if (!profile) return;
+    try {
+      if (editingCertification) {
+        await api.put("/nurses/me/certifications/" + editingCertification.id, data);
+      } else {
+        await api.post("/nurses/me/certifications", data);
+      }
+      toast.success(editingCertification ? "Certification updated!" : "Certification added!");
+      setCertificationsModalOpen(false);
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Something went wrong";
+      toast.error(message);
+    }
+  };
+
+  const handleDeleteCertification = async (id: string) => {
+    if (!profile) return;
+    if (!confirm("Delete this certification?")) return;
+    try {
+      await api.delete("/nurses/me/certifications/" + id);
+      toast.success("Certification deleted!");
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to delete certification";
+      toast.error(message);
+    }
+  };
+
+  // Clear all functions
+  const handleClearAllExperience = async () => {
+    if (!profile) return;
+    if (!confirm("Delete ALL experience entries? This action cannot be undone.")) return;
+    try {
+      await api.delete("/nurses/me/experience");
+      toast.success("All experience entries deleted!");
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to clear experience";
+      toast.error(message);
+    }
+  };
+
+  const handleClearAllEducation = async () => {
+    if (!profile) return;
+    if (!confirm("Delete ALL education entries? This action cannot be undone.")) return;
+    try {
+      await api.delete("/nurses/me/education");
+      toast.success("All education entries deleted!");
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to clear education";
+      toast.error(message);
+    }
+  };
+
+  const handleClearAllSkills = async () => {
+    if (!profile) return;
+    if (!confirm("Delete ALL skills? This action cannot be undone.")) return;
+    try {
+      await api.delete("/nurses/me/skills");
+      toast.success("All skills deleted!");
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to clear skills";
+      toast.error(message);
+    }
+  };
+
+  const handleClearAllCertifications = async () => {
+    if (!profile) return;
+    if (!confirm("Delete ALL certifications? This action cannot be undone.")) return;
+    try {
+      await api.delete("/nurses/me/certifications");
+      toast.success("All certifications deleted!");
+      fetchProfile();
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "Failed to clear certifications";
+      toast.error(message);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="text-center space-y-3">
+          <div className="relative mx-auto h-12 w-12">
+            <div className="absolute inset-0 rounded-full border-4 border-muted" />
+            <div className="absolute inset-0 rounded-full border-4 border-primary border-t-transparent animate-spin" />
+          </div>
+          <p className="text-sm text-muted-foreground">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-muted-foreground">Profile not found.</p>
+      </div>
+    );
+  }
+
+  const initials = `${(profile.first_name || "N")[0]}${(profile.last_name || "U")[0]}`.toUpperCase();
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr + "T00:00:00");
+    if (isNaN(d.getTime())) return dateStr;
+    // Hide ugly "Jan 1900" fallback dates
+    if (d.getFullYear() < 1950) return "";
+    return d.toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  };
+
+  // Calculate profile completeness
+  const fields = [
+    profile.first_name,
+    profile.last_name,
+    profile.phone,
+    profile.city,
+    profile.country,
+    profile.bio,
+  ];
+  const filledFields = fields.filter(Boolean).length;
+  const completionPercent = Math.round((filledFields / fields.length) * 100);
+
+  return (
+    <div>
+       {/* Profile Header - Blue Background */}
+       <div className="profile-header">
+         <div className="profile-header-bg">
+           <div className="absolute -top-40 -right-40 w-80 h-80 bg-sky-200/30 rounded-full blur-3xl"></div>
+           <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-200/30 rounded-full blur-3xl"></div>
+         </div>
+       </div>
+
+      {/* Profile Info Section - Overlapping between blue and white */}
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 -mt-26 relative z-10">
+        <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 mb-8">
+          {/* Avatar - centered on mobile, left on desktop */}
+          <div className="relative group flex-shrink-0">
+            {profile.profile_picture_url ? (
+              <div className="profile-picture relative" style={{ height: '12rem', width: '12rem' }}>
+                 <Image
+                   src={profile.profile_picture_url}
+                   alt={formatNurseName(profile.first_name, profile.last_name, profile.professional_status)}
+                   fill
+                   sizes="192px"
+                   className="object-cover"
+                   priority
+                 />
+              </div>
+            ) : (
+              <div className="profile-picture flex items-center justify-center text-3xl sm:text-5xl font-bold text-sky-600" style={{ height: '12rem', width: '12rem' }}>
+                {initials}
+              </div>
+            )}
+            <div className="profile-picture-verified">
+              <CheckCircle className="h-5 w-5 text-white" />
+            </div>
+
+            {/* Profile Picture Actions */}
+            <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleProfilePictureUpload}
+                  className="hidden"
+                  disabled={uploadingPicture}
+                />
+                <div className="h-10 w-10 rounded-lg bg-white flex items-center justify-center hover:bg-gray-50 transition-colors shadow-md">
+                  {uploadingPicture ? (
+                    <div className="h-4 w-4 border-2 border-sky-600 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <Upload className="h-5 w-5 text-sky-600" />
+                  )}
+                </div>
+              </label>
+              {profile.profile_picture_url && (
+                <button
+                  onClick={handleDeleteProfilePicture}
+                  disabled={uploadingPicture}
+                  className="h-10 w-10 rounded-lg bg-white flex items-center justify-center hover:bg-gray-50 transition-colors shadow-md"
+                >
+                  <Trash2 className="h-5 w-5 text-red-500" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Profile Info - centered on mobile, left-aligned on desktop */}
+          <div className="flex-1 flex items-center w-full">
+            <div className="w-full">
+              <div className="flex justify-between items-start mb-3 group">
+                <div className="flex-1">
+                 <h2 className="text-xl sm:text-3xl font-bold text-gray-800 mb-2 text-center sm:text-left">
+                   {formatNurseName(profile.first_name, profile.last_name, profile.professional_status)}
+                 </h2>
+                  <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 sm:gap-3 text-xs sm:text-sm mb-3">
+                    {(profile.city || profile.country) && (
+                      <span className="text-gray-600 flex items-center gap-1.5">
+                        <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-sky-600" />
+                        <span>{profile.city}{profile.city && profile.country ? ", " : ""}{profile.country}</span>
+                      </span>
+                    )}
+                    {profile.user?.email && (
+                      <span className="text-sm text-gray-600 flex items-center gap-2">
+                        <Mail className="h-4 w-4 text-sky-600" />
+                        <span>{profile.user.email}</span>
+                      </span>
+                    )}
+                    {profile.phone && (
+                      <span className="text-sm text-gray-600 flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-sky-600" />
+                        <span>{profile.phone}</span>
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setProfileEditModalOpen(true)} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Edit2 className="h-4 w-4" />
+                </Button>
+              </div>
+
+              <div>
+                {profile.bio ? (
+                  <p className="text-sm leading-relaxed text-gray-700 line-clamp-3 sm:line-clamp-none">
+                    {profile.bio}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground italic">
+                    No professional summary added yet. Click edit to add one.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+        {/* Stats Cards */}
+        <div className="max-w-7xl mx-auto px-3 sm:px-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          <Card className="stats-card">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-3">
+                <div className="stats-icon-blue">
+                  <Briefcase />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-800">{profile.experience?.length || 0}</p>
+                  <p className="text-sm text-gray-600">Experience</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="stats-card">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-3">
+                <div className="stats-icon-orange">
+                  <Award />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-800">{profile.certifications?.length || 0}</p>
+                  <p className="text-sm text-gray-600">Certifications</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="stats-card">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-3">
+                <div className="stats-icon-purple">
+                  <Sparkles />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-800">{profile.skills?.length || 0}</p>
+                  <p className="text-sm text-gray-600">Skills</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="stats-card">
+            <CardContent className="p-5">
+              <div className="flex items-center gap-3">
+                <div className="stats-icon-green">
+                  <User />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-800">{completionPercent}%</p>
+                  <p className="text-sm text-gray-600">Complete</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - Main Content */}
+          <div className="lg:col-span-2 space-y-6">
+
+          {/* Experience Sections (grouped by type) */}
+          {(() => {
+            const experienceSections: {
+              type: ExperienceType;
+              label: string;
+              icon: React.ReactNode;
+              iconBg: string;
+              iconColor: string;
+              badgeBg: string;
+              badgeText: string;
+              badgeBorder: string;
+              headerGradient: string;
+              emptyIcon: React.ReactNode;
+            }[] = [
+              {
+                type: "employment",
+                label: "Work Experience",
+                icon: <Briefcase className="h-5 w-5 text-sky-600" />,
+                iconBg: "bg-sky-100",
+                iconColor: "bg-sky-50",
+                badgeBg: "bg-sky-50",
+                badgeText: "text-sky-600",
+                badgeBorder: "border-sky-200",
+                headerGradient: "from-sky-50/60 to-blue-50/30 border-sky-100/40",
+                emptyIcon: <Briefcase className="h-8 w-8 mx-auto mb-2 opacity-30" />,
+              },
+              {
+                type: "clinical_placement",
+                label: "Clinical Placements",
+                icon: <Stethoscope className="h-5 w-5 text-emerald-600" />,
+                iconBg: "bg-emerald-100",
+                iconColor: "bg-emerald-50",
+                badgeBg: "bg-emerald-50",
+                badgeText: "text-emerald-600",
+                badgeBorder: "border-emerald-200",
+                headerGradient: "from-emerald-50/60 to-green-50/30 border-emerald-100/40",
+                emptyIcon: <Stethoscope className="h-8 w-8 mx-auto mb-2 opacity-30" />,
+              },
+              {
+                type: "ojt",
+                label: "OJT / Training",
+                icon: <Activity className="h-5 w-5 text-amber-600" />,
+                iconBg: "bg-amber-100",
+                iconColor: "bg-amber-50",
+                badgeBg: "bg-amber-50",
+                badgeText: "text-amber-600",
+                badgeBorder: "border-amber-200",
+                headerGradient: "from-amber-50/60 to-yellow-50/30 border-amber-100/40",
+                emptyIcon: <Activity className="h-8 w-8 mx-auto mb-2 opacity-30" />,
+              },
+              {
+                type: "volunteer",
+                label: "Volunteering",
+                icon: <HeartHandshake className="h-5 w-5 text-rose-600" />,
+                iconBg: "bg-rose-100",
+                iconColor: "bg-rose-50",
+                badgeBg: "bg-rose-50",
+                badgeText: "text-rose-600",
+                badgeBorder: "border-rose-200",
+                headerGradient: "from-rose-50/60 to-pink-50/30 border-rose-100/40",
+                emptyIcon: <HeartHandshake className="h-8 w-8 mx-auto mb-2 opacity-30" />,
+              },
+            ];
+
+            const allExperience = profile.experience || [];
+            const hasAnyExperience = allExperience.length > 0;
+
+            // If no experience at all, show a single empty card
+            if (!hasAnyExperience) {
+              return (
+                <Card className="section-card">
+                  <CardHeader className="bg-gradient-to-r from-sky-50/60 to-blue-50/30 border-b border-sky-100/40 flex flex-row items-center justify-between space-y-0 group rounded-t-lg overflow-hidden">
+                    <CardTitle className="flex items-center gap-3 text-lg">
+                      <div className="h-9 w-9 rounded-xl bg-sky-100 flex items-center justify-center">
+                        <Briefcase className="h-5 w-5 text-sky-600" />
+                      </div>
+                      <div>
+                        <span>Experience</span>
+                        <p className="text-sm font-normal text-muted-foreground mt-0.5">
+                          {profile.years_of_experience ?? 0} years total experience
+                        </p>
+                      </div>
+                    </CardTitle>
+                    <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="sm" onClick={() => handleOpenExperienceModal()}>
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-6">
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Briefcase className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">No experience added</p>
+                      <p className="text-xs opacity-70 mt-0.5">Upload your resume to auto-populate</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            }
+
+            // Show sections that have entries (+ always show Work Experience)
+            return experienceSections
+              .filter((section) => section.type === "employment" || allExperience.some((e) => (e.type || "employment") === section.type))
+              .map((section) => {
+                const sectionExperience = allExperience
+                  .filter((e) => (e.type || "employment") === section.type)
+                  .sort((a, b) => {
+                    const dateA = new Date(a.start_date || "1900-01-01");
+                    const dateB = new Date(b.start_date || "1900-01-01");
+                    return dateB.getTime() - dateA.getTime();
+                  });
+
+                return (
+                  <Card key={section.type} className="section-card">
+                    <CardHeader className={`bg-gradient-to-r ${section.headerGradient} border-b flex flex-row items-center justify-between space-y-0 group rounded-t-lg overflow-hidden`}>
+                      <CardTitle className="flex items-center gap-3 text-lg">
+                        <div className={`h-9 w-9 rounded-xl ${section.iconBg} flex items-center justify-center`}>
+                          {section.icon}
+                        </div>
+                        <div>
+                          <span>{section.label}</span>
+                          {section.type === "employment" && (
+                            <p className="text-sm font-normal text-muted-foreground mt-0.5">
+                              {profile.years_of_experience ?? 0} years total experience
+                            </p>
+                          )}
+                          {section.type !== "employment" && (
+                            <p className="text-sm font-normal text-muted-foreground mt-0.5">
+                              {sectionExperience.length} {sectionExperience.length === 1 ? "record" : "records"}
+                            </p>
+                          )}
+                        </div>
+                      </CardTitle>
+                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {sectionExperience.length > 0 && (
+                          <Button variant="ghost" size="sm" onClick={handleClearAllExperience} className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="sm" onClick={() => handleOpenExperienceModal()}>
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      {sectionExperience.length > 0 ? (
+                        <div className="space-y-0">
+                          {sectionExperience.map((exp, index) => (
+                            <div key={exp.id} className={`group flex items-start gap-3 py-4 ${index !== 0 ? "border-t border-border/50" : ""}`}>
+                              <div className={`h-9 w-9 rounded-lg ${section.iconColor} flex items-center justify-center flex-shrink-0 mt-0.5`}>
+                                <Building2 className={`h-4 w-4 ${section.badgeText}`} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-semibold text-foreground">{exp.position}</p>
+                                    <p className={`text-sm ${section.badgeText} font-medium mt-0.5`}>{exp.employer}</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">
+                                      {exp.department && exp.department}{exp.department && exp.location && " · "}{exp.location && exp.location}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-1 flex-shrink-0">
+                                    {(formatDate(exp.start_date) || (exp.end_date && formatDate(exp.end_date))) && (
+                                    <Badge variant="outline" className={`${section.badgeBg} ${section.badgeText} ${section.badgeBorder} text-xs font-normal`}>
+                                      {formatDate(exp.start_date)}{formatDate(exp.start_date) && " – "}{exp.end_date ? formatDate(exp.end_date) : "Present"}
+                                    </Badge>
+                                    )}
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger className="h-7 w-7 p-0 rounded-md opacity-0 group-hover:opacity-100 hover:bg-muted flex items-center justify-center transition-opacity">
+                                        <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end">
+                                        <DropdownMenuItem onClick={() => handleOpenExperienceModal(exp)}>
+                                          <Edit2 className="h-3.5 w-3.5 mr-2" />Edit
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => handleDeleteExperience(exp.id)} className="text-red-600 focus:text-red-600">
+                                          <Trash2 className="h-3.5 w-3.5 mr-2" />Delete
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
+                                  </div>
+                                </div>
+                                {exp.description && (
+                                  <p className="text-sm text-muted-foreground mt-2 leading-relaxed whitespace-pre-line">{exp.description}</p>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                          {section.emptyIcon}
+                          <p className="text-sm">No {section.label.toLowerCase()} added</p>
+                          <p className="text-xs opacity-70 mt-0.5">Upload your resume to auto-populate</p>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              });
+          })()}
+
+          {/* Education Section */}
+          <Card className="section-card">
+            <CardHeader className="bg-gradient-to-r from-sky-50/60 to-blue-50/30 border-b border-sky-100/40 flex flex-row items-center justify-between space-y-0 group rounded-t-lg overflow-hidden">
+              <CardTitle className="flex items-center gap-3 text-lg">
+                <div className="h-9 w-9 rounded-xl bg-sky-100 flex items-center justify-center">
+                  <GraduationCap className="h-5 w-5 text-sky-600" />
+                </div>
+                <div>
+                  <span>Education</span>
+                  <p className="text-sm font-normal text-muted-foreground mt-0.5">
+                    {profile.education?.length ?? 0} {profile.education?.length === 1 ? "record" : "records"}
+                  </p>
+                </div>
+              </CardTitle>
+              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                {profile.education && profile.education.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={handleClearAllEducation} className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => handleOpenEducationModal()}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              {profile.education && profile.education.length > 0 ? (
+                <div className="space-y-0">
+                    {profile.education
+                      .sort((a, b) => {
+                        const yearA = a.graduation_year || new Date(a.end_date || '1900-01-01').getFullYear();
+                        const yearB = b.graduation_year || new Date(b.end_date || '1900-01-01').getFullYear();
+                        return yearB - yearA;
+                      })
+                      .map((edu, index) => (
+                      <div key={edu.id} className={`group flex items-start gap-3 py-4 ${index !== 0 ? "border-t border-border/50" : ""}`}>
+                        <div className="h-9 w-9 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <GraduationCap className="h-4 w-4 text-sky-500" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-foreground">{edu.institution}</p>
+                              <p className="text-sm text-sky-600 font-medium mt-0.5">{edu.degree}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {edu.field_of_study && edu.field_of_study}{edu.field_of_study && edu.institution_location && " · "}{edu.institution_location && edu.institution_location}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              <Badge variant="outline" className="bg-sky-50 text-sky-600 border-sky-200 text-xs font-normal">
+                                {(edu.start_date || edu.end_date) ? (
+                                  <>{edu.start_date && new Date(edu.start_date).getFullYear()}{edu.start_date && '–'}{edu.end_date ? new Date(edu.end_date).getFullYear() : 'Present'}</>
+                                ) : edu.graduation_year ? `Grad. ${edu.graduation_year}` : 'Present'}
+                              </Badge>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger className="h-7 w-7 p-0 rounded-md opacity-0 group-hover:opacity-100 hover:bg-muted flex items-center justify-center transition-opacity">
+                                  <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => handleOpenEducationModal(edu)}>
+                                    <Edit2 className="h-3.5 w-3.5 mr-2" />Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem onClick={() => handleDeleteEducation(edu.id)} className="text-red-600 focus:text-red-600">
+                                    <Trash2 className="h-3.5 w-3.5 mr-2" />Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <GraduationCap className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No education added</p>
+                  <p className="text-xs opacity-70 mt-0.5">Upload your resume to auto-populate</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Skills Section */}
+          <Card className="section-card">
+            <CardHeader className="bg-gradient-to-r from-sky-50/60 to-blue-50/30 border-b border-sky-100/40 flex flex-row items-center justify-between space-y-0 group rounded-t-lg overflow-hidden">
+              <CardTitle className="flex items-center gap-3 text-lg">
+                <div className="h-9 w-9 rounded-xl bg-sky-100 flex items-center justify-center">
+                  <Sparkles className="h-5 w-5 text-sky-500" />
+                </div>
+                <div>
+                  <span>Skills</span>
+                  <p className="text-sm font-normal text-muted-foreground mt-0.5">
+                    {profile.skills?.length ?? 0} {profile.skills?.length === 1 ? "skill" : "skills"} listed
+                  </p>
+                </div>
+              </CardTitle>
+              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                {profile.skills && profile.skills.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={handleClearAllSkills} className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => handleOpenSkillsModal()}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              {profile.skills && profile.skills.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {profile.skills.map((skill) => (
+                    <div
+                      key={skill.id}
+                      className="skill-badge group relative cursor-pointer"
+                      onClick={() => handleOpenSkillsModal(skill)}
+                    >
+                      {skill.skill_name}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteSkill(skill.id);
+                        }}
+                        className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-white shadow flex items-center justify-center hover:bg-gray-100 opacity-0 group-hover:opacity-100 transition-opacity"
+                        aria-label="Delete skill"
+                      >
+                        <svg className="h-3 w-3 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Sparkles className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No skills added</p>
+                  <p className="text-xs opacity-70 mt-0.5">Upload your resume to auto-populate</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Column - Sidebar */}
+        <div className="space-y-6">
+          {/* Profile Strength */}
+          <Card className="section-card overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-sky-50/60 to-blue-50/30 border-b border-sky-100/40">
+              <CardTitle className="flex items-center gap-3 text-base">
+                <div className="h-9 w-9 rounded-xl bg-sky-100 flex items-center justify-center">
+                  <Activity className="h-5 w-5 text-sky-600" />
+                </div>
+                <span>Profile Strength</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between text-sm mb-3">
+                    <span className="font-bold text-base">
+                      {completionPercent < 50 ? "Beginner" : completionPercent < 80 ? "Intermediate" : "All-star"}
+                    </span>
+                    <span className="font-bold text-lg">{completionPercent}%</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div
+                      className={
+                        completionPercent < 50
+                          ? "progress-bar-fill-low"
+                          : completionPercent < 80
+                          ? "progress-bar-fill-medium"
+                          : "progress-bar-fill-high"
+                      }
+                      style={{ width: `${completionPercent}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2 text-sm">
+                  <p className="font-medium">Improve your profile:</p>
+                  {!profile.bio && (
+                    <div className="flex items-start gap-2 text-muted-foreground">
+                      <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground mt-1.5" />
+                      <span>Add a professional summary</span>
+                    </div>
+                  )}
+                  {!profile.phone && (
+                    <div className="flex items-start gap-2 text-muted-foreground">
+                      <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground mt-1.5" />
+                      <span>Add contact information</span>
+                    </div>
+                  )}
+                  {(!profile.experience || profile.experience.length === 0) && (
+                    <div className="flex items-start gap-2 text-muted-foreground">
+                      <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground mt-1.5" />
+                      <span>Add work experience</span>
+                    </div>
+                  )}
+                  {(!profile.skills || profile.skills.length === 0) && (
+                    <div className="flex items-start gap-2 text-muted-foreground">
+                      <div className="h-1.5 w-1.5 rounded-full bg-muted-foreground mt-1.5" />
+                      <span>List your skills</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Certifications */}
+          <Card className="section-card">
+            <CardHeader className="bg-gradient-to-r from-sky-50/60 to-blue-50/30 border-b border-sky-100/40 flex flex-row items-center justify-between space-y-0 group rounded-t-lg overflow-hidden">
+              <CardTitle className="flex items-center gap-3 text-base">
+                <div className="h-9 w-9 rounded-xl bg-sky-100 flex items-center justify-center">
+                  <Award className="h-5 w-5 text-sky-600" />
+                </div>
+                <div>
+                  <span>Certifications</span>
+                  <p className="text-sm font-normal text-muted-foreground mt-0.5">
+                    {profile.certifications?.length ?? 0} total
+                  </p>
+                </div>
+              </CardTitle>
+              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                {profile.certifications && profile.certifications.length > 0 && (
+                  <Button variant="ghost" size="sm" onClick={handleClearAllCertifications} className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                )}
+                <Button variant="ghost" size="sm" onClick={() => handleOpenCertificationsModal()}>
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="p-6">
+              {profile.certifications && profile.certifications.length > 0 ? (
+                <div className="space-y-4">
+                  {profile.certifications.map((cert, index) => (
+                    <div key={cert.id} className={`group flex items-start justify-between gap-2 ${index !== 0 ? "border-t border-border/50 pt-4" : ""}`}>
+                      <div className="flex items-start gap-3">
+                        <div className="h-8 w-8 rounded-lg bg-sky-50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <Award className="h-4 w-4 text-sky-500" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground text-sm">{cert.cert_type}</p>
+                          {cert.verified && (
+                            <p className="text-xs text-green-600 font-medium flex items-center gap-1 mt-0.5">
+                              <CheckCircle className="h-3 w-3" />Verified
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger className="h-7 w-7 p-0 rounded-md opacity-0 group-hover:opacity-100 hover:bg-muted flex items-center justify-center transition-opacity">
+                          <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleOpenCertificationsModal(cert)}>
+                            <Edit2 className="h-3.5 w-3.5 mr-2" />Edit
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDeleteCertification(cert.id)} className="text-red-600 focus:text-red-600">
+                            <Trash2 className="h-3.5 w-3.5 mr-2" />Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Award className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm">No certifications yet</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Resume Upload */}
+          <Card className="section-card overflow-hidden">
+            <CardHeader className="bg-gradient-to-r from-sky-50/60 to-blue-50/30 border-b border-sky-100/40">
+              <CardTitle className="flex items-center gap-3 text-base">
+                <div className="h-9 w-9 rounded-xl bg-sky-100 flex items-center justify-center">
+                  <FileText className="h-5 w-5 text-sky-600" />
+                </div>
+                <span>Resume</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-6">
+              <div className="space-y-3">
+                <label className="block">
+                  <input
+                    type="file"
+                    accept=".pdf,.doc,.docx"
+                    onChange={handleResumeUpload}
+                    className="hidden"
+                    disabled={uploading}
+                  />
+                  <div className="border-2 border-dashed rounded-lg p-4 text-center hover:border-primary hover:bg-accent transition-colors cursor-pointer">
+                    {uploading ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                        <span className="text-sm">Processing...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm font-medium">Upload Resume</p>
+                        <p className="text-xs text-muted-foreground mt-1">PDF or Word format</p>
+                      </>
+                    )}
+                  </div>
+                </label>
+
+                {profile.resumes && profile.resumes.length > 0 && (
+                  <div className="space-y-2 pt-2">
+                    {profile.resumes.map((resume) => (
+                      <div
+                        key={resume.id}
+                        className="flex items-center gap-2 p-2 rounded bg-muted text-sm group"
+                      >
+                        <FileCheck className="h-4 w-4 text-success flex-shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium truncate">
+                            {resume.original_filename}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {new Date(resume.uploaded_at).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <button
+                            onClick={() => handleViewResume(resume.id)}
+                            className="p-1 rounded hover:bg-background text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                            title="View resume"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </button>
+                        <button
+                          onClick={() => handleDownloadResume(resume.id, resume.original_filename)}
+                          className="p-1 rounded hover:bg-background text-muted-foreground hover:text-foreground transition-colors opacity-0 group-hover:opacity-100"
+                          title="Download resume"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteResume(resume.id)}
+                          className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors opacity-0 group-hover:opacity-100"
+                          title="Delete resume"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+      </div>
+
+      {/* Experience Modal */}
+      <ExperienceModal
+        open={experienceModalOpen}
+        onOpenChange={setExperienceModalOpen}
+        experience={editingExperience}
+        onSave={handleSaveExperience}
+      />
+
+      {/* Education Modal */}
+      <EducationModal
+        open={educationModalOpen}
+        onOpenChange={setEducationModalOpen}
+        education={editingEducation}
+        onSave={handleSaveEducation}
+      />
+
+      {/* Skills Modal */}
+      <SkillsModal
+        open={skillsModalOpen}
+        onOpenChange={setSkillsModalOpen}
+        skill={editingSkill}
+        onSave={handleSaveSkill}
+      />
+
+      {/* Certifications Modal */}
+      <CertificationsModal
+        open={certificationsModalOpen}
+        onOpenChange={setCertificationsModalOpen}
+        certification={editingCertification}
+        onSave={handleSaveCertification}
+      />
+
+      {/* Profile Edit Modal */}
+      <ProfileEditModal
+        open={profileEditModalOpen}
+        onOpenChange={setProfileEditModalOpen}
+        profile={profile}
+        onSave={handleSaveProfile}
+      />
+
+      <div className="h-8" />
+    </div>
+  );
+}
