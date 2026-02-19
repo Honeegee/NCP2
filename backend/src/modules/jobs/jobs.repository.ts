@@ -57,6 +57,13 @@ export class JobsRepository {
       .single();
   }
 
+  async createMany(jobs: Record<string, unknown>[]) {
+    return this.supabase
+      .from("jobs")
+      .insert(jobs.map((j) => ({ ...j, is_active: true })))
+      .select("*");
+  }
+
   async findAllActive() {
     return this.supabase
       .from("jobs")

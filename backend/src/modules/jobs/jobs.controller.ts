@@ -42,6 +42,17 @@ export async function deleteJob(req: Request, res: Response, next: NextFunction)
   } catch (err) { next(err); }
 }
 
+export async function bulkUploadJobs(req: Request, res: Response, next: NextFunction) {
+  try {
+    if (!req.file) {
+      res.status(400).json({ error: "No CSV file provided" });
+      return;
+    }
+    const result = await jobsService.bulkCreateJobs(req.file.buffer);
+    res.status(201).json({ data: result });
+  } catch (err) { next(err); }
+}
+
 export async function getMatches(req: Request, res: Response, next: NextFunction) {
   try {
     const matches = await jobsService.getJobMatches(req.user!.id);

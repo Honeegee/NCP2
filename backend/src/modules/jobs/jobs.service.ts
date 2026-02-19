@@ -1,3 +1,4 @@
+import { parse } from "csv-parse/sync";
 import { createServerSupabase } from "../../shared/database";
 import { getNurseFullProfile } from "../../shared/helpers";
 import { matchJobs } from "../../shared/job-matcher";
@@ -76,6 +77,108 @@ export async function deleteJob(id: string) {
   const { data, error } = await repo.softDelete(id);
   if (error) throw new Error(error.message);
   return data;
+}
+
+const VALID_EMPLOYMENT_TYPES = ["full-time", "part-time", "contract"];
+
+export async function bulkCreateJobs(csvBuffer: Buffer) {
+  let records: Record<string, string>[];
+  try {
+    records = parse(csvBuffer, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    });
+  } catch {
+    throw new BadRequestError("Invalid CSV format. Please check your file and try again.");
+  }
+
+  if (records.length === 0) {
+    throw new BadRequestError("CSV file is empty.");
+  }
+
+  if (records.length > 200) {
+    throw new BadRequestError("Maximum 200 jobs per upload. Please split your file.");
+  }
+
+  const errors: { row: number; message: string }[] = [];
+  const validJobs: Record<string, unknown>[] = [];
+
+  for (let i = 0; i < records.length; i++) {
+    const row = records[i];
+    const rowNum = i + 2; // +2 for header row + 0-index
+
+    // Validate required fields
+    if (!row.title?.trim()) {
+      errors.push({ row: rowNum, message: "Missing required field: title" });
+      continue;
+    }
+    if (!row.description?.trim()) {
+      errors.push({ row: rowNum, message: "Missing required field: description" });
+      continue;
+    }
+    if (!row.location?.trim()) {
+      errors.push({ row: rowNum, message: "Missing required field: location" });
+      continue;
+    }
+    if (!row.facility_name?.trim()) {
+      errors.push({ row: rowNum, message: "Missing required field: facility_name" });
+      continue;
+    }
+
+    const employmentType = (row.employment_type || "full-time").trim().toLowerCase();
+    if (!VALID_EMPLOYMENT_TYPES.includes(employmentType)) {
+      errors.push({ row: rowNum, message: `Invalid employment_type: "${row.employment_type}". Must be one of: ${VALID_EMPLOYMENT_TYPES.join(", ")}` });
+      continue;
+    }
+
+    const minExp = parseInt(row.min_experience_years || "0", 10);
+    if (isNaN(minExp) || minExp < 0) {
+      errors.push({ row: rowNum, message: "min_experience_years must be a non-negative number" });
+      continue;
+    }
+
+    const salaryMin = row.salary_min ? parseFloat(row.salary_min) : null;
+    const salaryMax = row.salary_max ? parseFloat(row.salary_max) : null;
+    if (row.salary_min && (salaryMin === null || isNaN(salaryMin))) {
+      errors.push({ row: rowNum, message: "salary_min must be a valid number" });
+      continue;
+    }
+    if (row.salary_max && (salaryMax === null || isNaN(salaryMax))) {
+      errors.push({ row: rowNum, message: "salary_max must be a valid number" });
+      continue;
+    }
+
+    validJobs.push({
+      title: row.title.trim(),
+      description: row.description.trim(),
+      location: row.location.trim(),
+      facility_name: row.facility_name.trim(),
+      employment_type: employmentType,
+      min_experience_years: minExp,
+      required_certifications: row.required_certifications
+        ? row.required_certifications.split(";").map((s: string) => s.trim()).filter(Boolean)
+        : [],
+      required_skills: row.required_skills
+        ? row.required_skills.split(";").map((s: string) => s.trim()).filter(Boolean)
+        : [],
+      salary_min: salaryMin,
+      salary_max: salaryMax,
+      salary_currency: (row.salary_currency || "USD").trim(),
+    });
+  }
+
+  let created = 0;
+  if (validJobs.length > 0) {
+    const repo = getRepo();
+    const { data, error } = await repo.createMany(validJobs);
+    if (error) {
+      throw new Error(`Database insert failed: ${error.message}`);
+    }
+    created = data?.length || validJobs.length;
+  }
+
+  return { created, errors, total: records.length };
 }
 
 export async function getJobMatchesForNurse(nurseProfileId: string) {

@@ -3,7 +3,7 @@
 import { Inbox } from '@novu/nextjs';
 import { useAuth } from '@/lib/auth-context';
 
-export function NovuNotificationBell() {
+export default function NotificationInbox() {
   const { user } = useAuth();
 
   const applicationIdentifier = process.env.NEXT_PUBLIC_NOVU_APPLICATION_IDENTIFIER;
@@ -32,11 +32,7 @@ export function NovuNotificationBell() {
           colorShadow: 'rgba(45, 63, 58, 0.08)',
           fontSize: '14px',
         },
-        elements: {
-          bellIcon: {
-            color: '#ffffff',
-          },
-        },
+        elements: {},
       }}
     />
   );
