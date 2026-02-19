@@ -24,16 +24,19 @@ export async function proxy(request: NextRequest) {
     pathname === "/" ||
     pathname === "/login" ||
     pathname === "/register" ||
+    pathname === "/verify-email" ||
     pathname === "/forgot-password" ||
     pathname === "/reset-password" ||
     pathname === "/privacy" ||
     pathname === "/terms" ||
     pathname === "/cookies" ||
+    pathname.startsWith("/sso/") ||
+    pathname.startsWith("/register/sso") ||
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon")
   ) {
     // Redirect authenticated users away from auth pages
-    if (user && (pathname === "/login" || pathname === "/register" || pathname === "/forgot-password" || pathname === "/reset-password")) {
+    if (user && (pathname === "/login" || pathname === "/register")) {
       if (user.role === "admin") {
         return NextResponse.redirect(new URL("/admin", request.url));
       }
@@ -61,6 +64,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|public).*)",
+    "/((?!_next/static|_next/image|favicon.ico|public|.*\\.png$|.*\\.jpg$|.*\\.jpeg$|.*\\.gif$|.*\\.svg$|.*\\.ico$|.*\\.webp$).*)",
   ],
 };

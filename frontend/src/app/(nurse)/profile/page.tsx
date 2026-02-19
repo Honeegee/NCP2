@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
 import { api, ApiError } from "@/lib/api-client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -47,10 +47,12 @@ import SkillsModal from "@/components/profile/modals/SkillsModal";
 import CertificationsModal from "@/components/profile/modals/CertificationsModal";
 import ProfileEditModal from "@/components/profile/modals/ProfileEditModal";
 import { formatNurseName } from "@/lib/utils";
+import { startOnboardingTour } from "@/lib/onboarding-tour";
 
 export default function ProfilePage() {
   const { user, refreshProfile } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [profile, setProfile] = useState<NurseFullProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -89,6 +91,14 @@ export default function ProfilePage() {
       fetchProfile();
     }
   }, [user, fetchProfile]);
+
+  // Trigger onboarding tour for new SSO users
+  useEffect(() => {
+    if (!loading && searchParams.get("tour") === "welcome") {
+      startOnboardingTour(true);
+      window.history.replaceState({}, "", "/profile");
+    }
+  }, [loading, searchParams]);
 
   const handleSaveProfile = async (data: {
     first_name: string;
@@ -615,7 +625,7 @@ export default function ProfilePage() {
                     )}
                   </div>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => setProfileEditModalOpen(true)} className="opacity-0 group-hover:opacity-100 transition-opacity">
+                <Button id="edit-profile-btn" variant="outline" size="sm" onClick={() => setProfileEditModalOpen(true)}>
                   <Edit2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -1180,7 +1190,7 @@ export default function ProfilePage() {
           </Card>
 
           {/* Resume Upload */}
-          <Card className="section-card overflow-hidden">
+          <Card id="resume-upload-card" className="section-card overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-sky-50/60 to-blue-50/30 border-b border-sky-100/40">
               <CardTitle className="flex items-center gap-3 text-base">
                 <div className="h-9 w-9 rounded-xl bg-sky-100 flex items-center justify-center">

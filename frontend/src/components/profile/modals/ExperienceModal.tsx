@@ -260,7 +260,7 @@ export default function ExperienceModal({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button className="btn-primary-green border-0" onClick={handleSave} disabled={saving}>
             {saving ? "Saving..." : experience ? "Update" : "Add"} Experience
           </Button>
         </DialogFooter>

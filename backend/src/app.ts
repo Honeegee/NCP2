@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
+import { passport } from "./config/passport";
 import { env } from "./config/env";
 import { errorHandler } from "./middleware/error-handler";
 
@@ -18,6 +19,7 @@ app.use(helmet());
 app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use(passport.initialize());
 
 // --- Health Check ---
 app.get("/health", (_req, res) => {

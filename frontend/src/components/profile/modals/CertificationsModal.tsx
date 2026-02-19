@@ -227,7 +227,7 @@ export default function CertificationsModal({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button className="btn-primary-green border-0" onClick={handleSave} disabled={saving}>
             {saving ? "Saving..." : certification ? "Update" : "Add"} Certification
           </Button>
         </DialogFooter>

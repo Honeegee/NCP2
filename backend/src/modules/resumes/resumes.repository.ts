@@ -81,4 +81,19 @@ export class ResumesRepository {
   async insertEducation(records: Record<string, unknown>[]) {
     return this.supabase.from("nurse_education").insert(records);
   }
+
+  async getNurseProfile(nurseId: string) {
+    return this.supabase
+      .from("nurse_profiles")
+      .select("bio, address, graduation_year, years_of_experience")
+      .eq("id", nurseId)
+      .single();
+  }
+
+  async updateNurseProfile(nurseId: string, data: Record<string, unknown>) {
+    return this.supabase
+      .from("nurse_profiles")
+      .update(data)
+      .eq("id", nurseId);
+  }
 }

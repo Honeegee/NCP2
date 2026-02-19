@@ -22,28 +22,21 @@ export const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+export const checkEmailSchema = z.object({
+  email: z.string().email("Valid email is required"),
+});
+
 export const registerSchema = z.object({
-  first_name: z.string().min(1, "First name is required"),
-  last_name: z.string().min(1, "Last name is required"),
   email: z.string().email("Valid email is required"),
   password: strongPasswordSchema,
-  mobile_number: z.string()
-    .min(10, "Mobile number must be at least 10 digits")
-    .max(20, "Mobile number must not exceed 20 characters")
-    .regex(/^[\d\s+()-]+$/, "Invalid mobile number format"),
-  location_type: z.enum(["philippines", "overseas"]),
-  professional_status: z.enum(["registered_nurse", "nursing_student"]).optional(),
-  employment_status: z.string().optional(),
-  certifications: z.array(z.object({
-    cert_type: z.string().min(1),
-    cert_number: z.string().optional().default(""),
-    score: z.string().optional().default(""),
-  })).optional().default([]),
-  years_of_experience: z.string().optional(),
-  specialization: z.string().optional(),
-  school_name: z.string().optional(),
-  graduation_year: z.string().optional(),
-  internship_experience: z.string().optional(),
+});
+
+export const verifyEmailSchema = z.object({
+  token: z.string().min(1, "Verification token is required"),
+});
+
+export const resendVerificationSchema = z.object({
+  email: z.string().email("Valid email is required"),
 });
 
 export const forgotPasswordSchema = z.object({
@@ -53,10 +46,6 @@ export const forgotPasswordSchema = z.object({
 export const resetPasswordSchema = z.object({
   token: z.string().min(1, "Reset token is required"),
   newPassword: strongPasswordSchema,
-  confirmPassword: z.string().min(1, "Please confirm your password"),
-}).refine((data) => data.newPassword === data.confirmPassword, {
-  message: "Passwords do not match",
-  path: ["confirmPassword"],
 });
 
 export const changePasswordSchema = z.object({

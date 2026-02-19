@@ -123,7 +123,7 @@ export function JobDetailPanel({
           {/* Action Buttons */}
           {isAdmin ? (
             <div className="flex items-center gap-3">
-              <Button onClick={() => onEdit?.(job)} size="lg">
+              <Button onClick={() => onEdit?.(job)} size="lg" className="btn-primary-green border-0">
                 <Pencil className="h-4 w-4 mr-1" />
                 Edit Job
               </Button>
@@ -156,7 +156,7 @@ export function JobDetailPanel({
               <Button
                 onClick={onApply}
                 disabled={isApplied || applyLoading}
-                className={isApplied ? "bg-emerald-600 hover:bg-emerald-600" : ""}
+                className={isApplied ? "bg-emerald-600 hover:bg-emerald-600" : "btn-primary-green border-0"}
                 size="lg"
               >
                 {applyLoading ? (

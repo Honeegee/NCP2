@@ -299,7 +299,7 @@ export function JobFormDialog({
           </div>
 
           <div className="flex items-center gap-3 pt-2">
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" className="btn-primary-green border-0" disabled={submitting}>
               {submitting ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin mr-1" />

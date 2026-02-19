@@ -42,4 +42,13 @@ export const env = {
 
   // CORS
   CORS_ORIGIN: optionalEnv("CORS_ORIGIN", "http://localhost:3000"),
+
+  // OAuth / SSO (optional)
+  GOOGLE_CLIENT_ID: optionalEnv("GOOGLE_CLIENT_ID"),
+  GOOGLE_CLIENT_SECRET: optionalEnv("GOOGLE_CLIENT_SECRET"),
+  LINKEDIN_CLIENT_ID: optionalEnv("LINKEDIN_CLIENT_ID"),
+  LINKEDIN_CLIENT_SECRET: optionalEnv("LINKEDIN_CLIENT_SECRET"),
+  FACEBOOK_CLIENT_ID: optionalEnv("FACEBOOK_CLIENT_ID"),
+  FACEBOOK_CLIENT_SECRET: optionalEnv("FACEBOOK_CLIENT_SECRET"),
+  FRONTEND_URL: optionalEnv("FRONTEND_URL", "http://localhost:3000"),
 } as const;

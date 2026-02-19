@@ -226,7 +226,7 @@ export default function AdminJobManagement() {
               Back to Dashboard
             </Button>
           </Link>
-          <Button size="sm" onClick={handleCreate}>
+          <Button size="sm" className="btn-primary-green border-0" onClick={handleCreate}>
             <Plus className="h-4 w-4 mr-1" />
             Create New Job
           </Button>

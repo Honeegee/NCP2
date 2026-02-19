@@ -168,7 +168,7 @@ export default function EducationModal({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button className="btn-primary-green border-0" onClick={handleSave} disabled={saving}>
             {saving ? "Saving..." : education ? "Update" : "Add"} Education
           </Button>
         </DialogFooter>

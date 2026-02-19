@@ -189,6 +189,27 @@ export async function uploadResume(userId: string, file: Express.Multer.File) {
         });
       if (eduRecords.length > 0) await repo.insertEducation(eduRecords);
     }
+
+    // Populate nurse profile fields (only fill empty fields)
+    const { data: currentProfile } = await repo.getNurseProfile(nurseId);
+    if (currentProfile) {
+      const updates: Record<string, unknown> = {};
+      if (!currentProfile.bio && parsedData.summary) {
+        updates.bio = parsedData.summary;
+      }
+      if (!currentProfile.address && parsedData.address) {
+        updates.address = parsedData.address;
+      }
+      if (!currentProfile.graduation_year && parsedData.graduation_year) {
+        updates.graduation_year = parsedData.graduation_year;
+      }
+      if (!currentProfile.years_of_experience && parsedData.years_of_experience) {
+        updates.years_of_experience = parsedData.years_of_experience;
+      }
+      if (Object.keys(updates).length > 0) {
+        await repo.updateNurseProfile(nurseId, updates);
+      }
+    }
   }
 
   return {

@@ -25,13 +25,14 @@ interface TokenPair {
   accessToken: string;
   refreshToken: string;
   user: { id: string; email: string; role: string; firstName?: string; lastName?: string };
+  isNewUser?: boolean;
 }
 
-function signAccessToken(payload: { id: string; email: string; role: string }): string {
+export function signAccessToken(payload: { id: string; email: string; role: string }): string {
   return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_ACCESS_EXPIRY });
 }
 
-function signRefreshToken(payload: { id: string }): string {
+export function signRefreshToken(payload: { id: string }): string {
   return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_REFRESH_EXPIRY });
 }
 
@@ -50,13 +51,20 @@ export async function login(email: string, password: string): Promise<TokenPair>
   const supabase = createServerSupabase();
   const { data: user, error } = await supabase
     .from("users")
-    .select("id, email, password_hash, role")
+    .select("id, email, password_hash, role, email_verified, last_login_at")
     .eq("email", cleanEmail)
     .single();
 
   if (error || !user) {
     recordFailedLogin(cleanEmail);
-    throw new UnauthorizedError("Invalid email or password");
+    throw new UnauthorizedError("No account found with this email. Please sign up first.");
+  }
+
+  // SSO-only users don't have a password
+  if (!user.password_hash) {
+    throw new UnauthorizedError(
+      "This account was registered with social sign-in. Please use Google, LinkedIn, or Facebook to log in."
+    );
   }
 
   const isValid = await bcrypt.compare(password, user.password_hash);
@@ -67,10 +75,17 @@ export async function login(email: string, password: string): Promise<TokenPair>
         "Too many failed attempts. Account locked for 30 minutes."
       );
     }
-    throw new UnauthorizedError("Invalid email or password");
+    throw new UnauthorizedError("Incorrect password. Please try again or reset your password.");
   }
 
   clearFailedLogins(cleanEmail);
+
+  // Check email verification for manual sign-up users
+  if (user.email_verified === false) {
+    throw new UnauthorizedError(
+      "Please verify your email before signing in. Check your inbox for the verification link."
+    );
+  }
 
   // Get nurse profile for name
   let firstName: string | undefined;
@@ -102,6 +117,14 @@ export async function login(email: string, password: string): Promise<TokenPair>
     }
   }
 
+  const isNewUser = !user.last_login_at;
+
+  // Update last_login_at
+  await supabase
+    .from("users")
+    .update({ last_login_at: new Date().toISOString() })
+    .eq("id", user.id);
+
   const accessToken = signAccessToken({ id: user.id, email: user.email, role: user.role });
   const refreshToken = signRefreshToken({ id: user.id });
 
@@ -109,32 +132,51 @@ export async function login(email: string, password: string): Promise<TokenPair>
     accessToken,
     refreshToken,
     user: { id: user.id, email: user.email, role: user.role, firstName, lastName },
+    isNewUser,
   };
+}
+
+export async function checkEmail(email: string): Promise<{ exists: boolean; hasPassword: boolean; provider?: string }> {
+  const cleanEmail = sanitizeEmail(email);
+  const supabase = createServerSupabase();
+
+  const { data: user } = await supabase
+    .from("users")
+    .select("id, password_hash")
+    .eq("email", cleanEmail)
+    .single();
+
+  if (!user) {
+    return { exists: false, hasPassword: false };
+  }
+
+  // Check if user has an SSO provider linked
+  if (!user.password_hash) {
+    const { data: ssoLink } = await supabase
+      .from("user_sso_providers")
+      .select("provider")
+      .eq("user_id", user.id)
+      .limit(1)
+      .single();
+
+    return { exists: true, hasPassword: false, provider: ssoLink?.provider || "social" };
+  }
+
+  return { exists: true, hasPassword: true };
 }
 
 export async function register(data: {
   email: string;
   password: string;
-  first_name: string;
-  last_name: string;
-  mobile_number: string;
-  location_type: string;
-  professional_status?: string;
-  employment_status?: string;
-  certifications?: { cert_type: string; cert_number?: string; score?: string }[];
-  years_of_experience?: string;
-  specialization?: string;
-  school_name?: string;
-  graduation_year?: string;
-  internship_experience?: string;
-}): Promise<{ user_id: string; profile_id: string; accessToken: string; refreshToken: string }> {
+}): Promise<{ message: string }> {
+  const cleanEmail = sanitizeEmail(data.email);
   const supabase = createServerSupabase();
 
   // Check existing user
   const { data: existing } = await supabase
     .from("users")
     .select("id")
-    .eq("email", data.email)
+    .eq("email", cleanEmail)
     .single();
 
   if (existing) {
@@ -143,10 +185,10 @@ export async function register(data: {
 
   const password_hash = await bcrypt.hash(data.password, 12);
 
-  // Create user
+  // Create user with email_verified = false
   const { data: user, error: userError } = await supabase
     .from("users")
-    .insert({ email: data.email, password_hash, role: "nurse" })
+    .insert({ email: cleanEmail, password_hash, role: "nurse", email_verified: false })
     .select("id")
     .single();
 
@@ -154,69 +196,149 @@ export async function register(data: {
     throw new Error("Failed to create account");
   }
 
-  const parsedYears = data.years_of_experience ? parseInt(data.years_of_experience, 10) || 0 : 0;
-  const parsedGradYear = data.graduation_year ? parseInt(data.graduation_year, 10) || null : null;
-
-  // Create nurse profile
-  const { data: profile, error: profileError } = await supabase
+  // Create empty nurse profile — user fills in details on their profile page
+  const { error: profileError } = await supabase
     .from("nurse_profiles")
     .insert({
       user_id: user.id,
-      first_name: data.first_name,
-      last_name: data.last_name || "",
-      phone: data.mobile_number || "",
-      country: data.location_type === "overseas" ? "Overseas" : "Philippines",
-      location_type: data.location_type || "philippines",
-      professional_status: data.professional_status || "registered_nurse",
-      employment_status: data.employment_status || null,
-      specialization: data.specialization || null,
-      school_name: data.school_name || null,
-      internship_experience: data.internship_experience || null,
-      graduation_year: parsedGradYear,
-      years_of_experience: parsedYears,
-      profile_complete: true,
-    })
-    .select("id")
-    .single();
+      first_name: "",
+      last_name: "",
+      phone: "",
+      country: "Philippines",
+      years_of_experience: 0,
+      profile_complete: false,
+    });
 
-  if (profileError || !profile) {
-    // Rollback user
+  if (profileError) {
+    console.error("Profile creation error:", profileError);
     await supabase.from("users").delete().eq("id", user.id);
     throw new Error("Failed to create profile");
   }
 
-  // Insert certifications
-  if (data.certifications && data.certifications.length > 0) {
-    const certRecords = data.certifications
-      .filter((c) => c.cert_type)
-      .map((c) => ({
-        nurse_id: profile.id,
-        cert_type: c.cert_type,
-        cert_number: c.cert_number || null,
-        score: c.score || null,
-      }));
-    if (certRecords.length > 0) {
-      await supabase.from("nurse_certifications").insert(certRecords);
-    }
-  }
+  // Send verification email
+  await sendVerificationEmail(user.id, cleanEmail, "");
 
-  // Insert education for students
-  if (data.professional_status === "nursing_student" && data.school_name) {
-    await supabase.from("nurse_education").insert({
-      nurse_id: profile.id,
-      institution: data.school_name,
-      degree: "Bachelor of Science in Nursing",
-      graduation_year: parsedGradYear,
-    });
-  }
-
-  const accessToken = signAccessToken({ id: user.id, email: data.email, role: "nurse" });
-  const refreshToken = signRefreshToken({ id: user.id });
-
-  return { user_id: user.id, profile_id: profile.id, accessToken, refreshToken };
+  return { message: "Account created. Please check your email to verify your account." };
 }
 
-export async function refreshAccessToken(refreshTokenStr: string): Promise<{ accessToken: string }> {
+export async function sendVerificationEmail(userId: string, email: string, firstName: string): Promise<void> {
+  const supabase = createServerSupabase();
+
+  // Invalidate existing tokens
+  await supabase
+    .from("email_verification_tokens")
+    .update({ used: true })
+    .eq("user_id", userId)
+    .eq("used", false);
+
+  const token = await generateSecureToken(32);
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + 24);
+
+  const { error: tokenError } = await supabase
+    .from("email_verification_tokens")
+    .insert({
+      user_id: userId,
+      token,
+      expires_at: expiresAt.toISOString(),
+    });
+
+  if (tokenError) throw new Error("Failed to create verification token");
+
+  const baseUrl = env.CORS_ORIGIN || "http://localhost:3000";
+  const verifyUrl = `${baseUrl}/verify-email?token=${token}`;
+
+  const { getVerificationEmailHtml, getVerificationEmailText } = require("../../shared/email-templates");
+
+  const resend = getResend();
+  if (resend) {
+    try {
+      await resend.emails.send({
+        from: getFromEmail(),
+        to: email,
+        subject: "Verify Your Email - Nurse Care Pro",
+        html: getVerificationEmailHtml({ userName: firstName || email.split("@")[0], verifyUrl, expiryTime: "24 hours" }),
+        text: getVerificationEmailText({ userName: firstName || email.split("@")[0], verifyUrl, expiryTime: "24 hours" }),
+      });
+    } catch (err) {
+      console.error("Error sending verification email:", err);
+    }
+  } else {
+    console.log("Resend not configured. Verification URL:", verifyUrl);
+  }
+}
+
+export async function verifyEmail(token: string): Promise<{ message: string }> {
+  if (!isValidTokenFormat(token)) {
+    throw new BadRequestError("Invalid or expired verification token");
+  }
+
+  const supabase = createServerSupabase();
+
+  const { data: verificationToken, error: tokenError } = await supabase
+    .from("email_verification_tokens")
+    .select("*")
+    .eq("token", token)
+    .eq("used", false)
+    .single();
+
+  if (tokenError || !verificationToken) {
+    throw new BadRequestError("Invalid or expired verification token");
+  }
+
+  if (new Date() > new Date(verificationToken.expires_at)) {
+    await supabase.from("email_verification_tokens").update({ used: true }).eq("id", verificationToken.id);
+    throw new BadRequestError("Verification token has expired. Please request a new one.");
+  }
+
+  // Mark email as verified
+  const { error: updateError } = await supabase
+    .from("users")
+    .update({ email_verified: true })
+    .eq("id", verificationToken.user_id);
+
+  if (updateError) throw new Error("Failed to verify email");
+
+  // Invalidate all tokens for this user
+  await supabase
+    .from("email_verification_tokens")
+    .update({ used: true })
+    .eq("user_id", verificationToken.user_id)
+    .eq("used", false);
+
+  return { message: "Email verified successfully. You can now sign in." };
+}
+
+export async function resendVerification(email: string): Promise<{ message: string }> {
+  const cleanEmail = sanitizeEmail(email);
+  const supabase = createServerSupabase();
+
+  const { data: user } = await supabase
+    .from("users")
+    .select("id, email_verified")
+    .eq("email", cleanEmail)
+    .single();
+
+  // Don't reveal if email exists
+  if (!user || user.email_verified) {
+    // Return success regardless to prevent email enumeration
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return { message: "If an unverified account exists with this email, a new verification link has been sent." };
+  }
+
+  // Get first name for email
+  const { data: profile } = await supabase
+    .from("nurse_profiles")
+    .select("first_name")
+    .eq("user_id", user.id)
+    .single();
+
+  await sendVerificationEmail(user.id, cleanEmail, profile?.first_name || "");
+
+  return { message: "If an unverified account exists with this email, a new verification link has been sent." };
+}
+
+export async function refreshAccessToken(refreshTokenStr: string): Promise<{ accessToken: string; refreshToken: string }> {
   try {
     const decoded = jwt.verify(refreshTokenStr, env.JWT_SECRET) as { id: string };
     const supabase = createServerSupabase();
@@ -229,7 +351,8 @@ export async function refreshAccessToken(refreshTokenStr: string): Promise<{ acc
     if (error || !user) throw new UnauthorizedError("Invalid refresh token");
 
     const accessToken = signAccessToken({ id: user.id, email: user.email, role: user.role });
-    return { accessToken };
+    const refreshToken = signRefreshToken({ id: user.id });
+    return { accessToken, refreshToken };
   } catch {
     throw new UnauthorizedError("Invalid or expired refresh token");
   }

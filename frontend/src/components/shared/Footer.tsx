@@ -13,7 +13,6 @@ export function Footer() {
           {/* Brand & Description */}
           <div className="lg:col-span-5">
             <div className="mb-3 -ml-4">
-              {/* New Logo - Left Aligned */}
               <Image
                 src="/logo.png"
                 alt="Nurse Care Pro"
@@ -29,7 +28,7 @@ export function Footer() {
               locally and internationally.
             </p>
 
-            {/* Newsletter - Below Brand Description */}
+            {/* Newsletter */}
             <div className="mt-4 pt-4 border-t border-[var(--border)]">
               <h5 className="font-semibold text-xs mb-1.5 text-gray-900">Stay Updated</h5>
               <p className="text-xs text-gray-700 mb-2">
@@ -41,7 +40,7 @@ export function Footer() {
                   placeholder="Your email"
                   className="h-8 text-xs flex-1 bg-white border-[var(--input)] focus:border-[var(--primary)] focus:ring-[var(--primary)]"
                 />
-                <Button className="h-8 px-4 bg-[var(--primary)] hover:bg-[var(--primary-dark)] text-white font-medium text-xs shadow-sm hover:shadow">
+                <Button className="h-8 px-4 font-medium text-xs text-white shadow-sm transition-all duration-200 hover:scale-105 btn-primary-green">
                   Subscribe
                 </Button>
               </div>
@@ -52,42 +51,22 @@ export function Footer() {
           <div className="lg:col-span-2">
             <h4 className="font-bold text-sm mb-4 text-gray-900 uppercase tracking-wide">Platform</h4>
             <ul className="space-y-2.5">
-              <li>
-                <Link 
-                  href="/dashboard" 
-                  className="text-sm text-gray-700 hover:text-gray-900 transition-colors inline-flex items-center gap-1 group"
-                >
-                  <span>Dashboard</span>
-                  <ArrowRight className="h-3 w-3 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                </Link>
-              </li>
-              <li>
-                <Link 
-                  href="/jobs" 
-                  className="text-sm text-gray-700 hover:text-gray-900 transition-colors inline-flex items-center gap-1 group"
-                >
-                  <span>Job Matches</span>
-                  <ArrowRight className="h-3 w-3 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                </Link>
-              </li>
-              <li>
-                <Link 
-                  href="/profile" 
-                  className="text-sm text-gray-700 hover:text-gray-900 transition-colors inline-flex items-center gap-1 group"
-                >
-                  <span>My Profile</span>
-                  <ArrowRight className="h-3 w-3 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                </Link>
-              </li>
-              <li>
-                <Link 
-                  href="/certifications" 
-                  className="text-sm text-gray-700 hover:text-gray-900 transition-colors inline-flex items-center gap-1 group"
-                >
-                  <span>Certifications</span>
-                  <ArrowRight className="h-3 w-3 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                </Link>
-              </li>
+              {[
+                { href: "/dashboard", label: "Dashboard" },
+                { href: "/jobs", label: "Job Matches" },
+                { href: "/profile", label: "My Profile" },
+                { href: "/certifications", label: "Certifications" },
+              ].map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="text-sm text-gray-700 hover:text-gray-900 transition-colors inline-flex items-center gap-1 group"
+                  >
+                    <span>{link.label}</span>
+                    <ArrowRight className="h-3 w-3 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all" />
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -95,42 +74,22 @@ export function Footer() {
           <div className="lg:col-span-2">
             <h4 className="font-semibold text-sm mb-3 text-gray-900">Resources</h4>
             <ul className="space-y-2.5">
-              <li>
-                <Link 
-                  href="/help" 
-                  className="text-sm text-gray-700 hover:text-gray-900 transition-colors inline-flex items-center gap-1 group"
-                >
-                  <span>Help Center</span>
-                  <ArrowRight className="h-3 w-3 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                </Link>
-              </li>
-              <li>
-                <Link 
-                  href="/blog" 
-                  className="text-sm text-gray-700 hover:text-gray-900 transition-colors inline-flex items-center gap-1 group"
-                >
-                  <span>Career Blog</span>
-                  <ArrowRight className="h-3 w-3 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                </Link>
-              </li>
-              <li>
-                <Link 
-                  href="/guides" 
-                  className="text-sm text-gray-700 hover:text-gray-900 transition-colors inline-flex items-center gap-1 group"
-                >
-                  <span>Career Guides</span>
-                  <ArrowRight className="h-3 w-3 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                </Link>
-              </li>
-              <li>
-                <Link 
-                  href="/faq" 
-                  className="text-sm text-gray-700 hover:text-gray-900 transition-colors inline-flex items-center gap-1 group"
-                >
-                  <span>FAQ</span>
-                  <ArrowRight className="h-3 w-3 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                </Link>
-              </li>
+              {[
+                { href: "/help", label: "Help Center" },
+                { href: "/blog", label: "Career Blog" },
+                { href: "/guides", label: "Career Guides" },
+                { href: "/faq", label: "FAQ" },
+              ].map((link) => (
+                <li key={link.href}>
+                  <Link
+                    href={link.href}
+                    className="text-sm text-gray-700 hover:text-gray-900 transition-colors inline-flex items-center gap-1 group"
+                  >
+                    <span>{link.label}</span>
+                    <ArrowRight className="h-3 w-3 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all" />
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
 
@@ -144,10 +103,7 @@ export function Footer() {
                 </div>
                 <div>
                   <p className="text-xs text-gray-700 mb-0.5">Email</p>
-                  <a 
-                    href="mailto:support@nursecarepro.com" 
-                    className="text-sm text-gray-900 hover:text-primary transition-colors"
-                  >
+                  <a href="mailto:support@nursecarepro.com" className="text-sm text-gray-900 hover:text-primary transition-colors">
                     support@nursecarepro.com
                   </a>
                 </div>
@@ -158,10 +114,7 @@ export function Footer() {
                 </div>
                 <div>
                   <p className="text-xs text-gray-700 mb-0.5">Phone</p>
-                  <a 
-                    href="tel:+6328888000" 
-                    className="text-sm text-gray-900 hover:text-primary transition-colors"
-                  >
+                  <a href="tel:+6328888000" className="text-sm text-gray-900 hover:text-primary transition-colors">
                     +63 (2) 8888-0000
                   </a>
                 </div>
@@ -172,9 +125,7 @@ export function Footer() {
                 </div>
                 <div>
                   <p className="text-xs text-gray-700 mb-0.5">Location</p>
-                  <p className="text-sm text-gray-900">
-                    Manila, Philippines
-                  </p>
+                  <p className="text-sm text-gray-900">Manila, Philippines</p>
                 </div>
               </li>
             </ul>
@@ -183,46 +134,24 @@ export function Footer() {
             <div>
               <h5 className="font-semibold text-xs mb-3 text-gray-900">Follow Us</h5>
               <div className="flex items-center gap-2">
-                <Button 
-                  size="icon" 
-                  variant="outline" 
-                  className="h-9 w-9 rounded-lg hover:bg-primary hover:text-white hover:border-primary transition-all"
-                  asChild
-                >
-                  <a href="https://facebook.com" target="_blank" rel="noopener noreferrer">
-                    <Facebook className="h-4 w-4" />
-                  </a>
-                </Button>
-                <Button 
-                  size="icon" 
-                  variant="outline" 
-                  className="h-9 w-9 rounded-lg hover:bg-primary hover:text-white hover:border-primary transition-all"
-                  asChild
-                >
-                  <a href="https://twitter.com" target="_blank" rel="noopener noreferrer">
-                    <Twitter className="h-4 w-4" />
-                  </a>
-                </Button>
-                <Button 
-                  size="icon" 
-                  variant="outline" 
-                  className="h-9 w-9 rounded-lg hover:bg-primary hover:text-white hover:border-primary transition-all"
-                  asChild
-                >
-                  <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer">
-                    <Linkedin className="h-4 w-4" />
-                  </a>
-                </Button>
-                <Button 
-                  size="icon" 
-                  variant="outline" 
-                  className="h-9 w-9 rounded-lg hover:bg-primary hover:text-white hover:border-primary transition-all"
-                  asChild
-                >
-                  <a href="https://instagram.com" target="_blank" rel="noopener noreferrer">
-                    <Instagram className="h-4 w-4" />
-                  </a>
-                </Button>
+                {[
+                  { href: "https://facebook.com", Icon: Facebook },
+                  { href: "https://twitter.com", Icon: Twitter },
+                  { href: "https://linkedin.com", Icon: Linkedin },
+                  { href: "https://instagram.com", Icon: Instagram },
+                ].map(({ href, Icon }) => (
+                  <Button
+                    key={href}
+                    size="icon"
+                    variant="outline"
+                    className="h-9 w-9 rounded-lg border-border text-gray-500 hover:bg-[#f7c296] hover:text-white hover:border-[#f97316] transition-all duration-200"
+                    asChild
+                  >
+                    <a href={href} target="_blank" rel="noopener noreferrer">
+                      <Icon className="h-4 w-4" />
+                    </a>
+                  </Button>
+                ))}
               </div>
             </div>
           </div>
@@ -236,24 +165,19 @@ export function Footer() {
             &copy; {new Date().getFullYear()} Nurse Care Pro. All rights reserved.
           </p>
           <div className="flex items-center gap-4">
-            <Link
-              href="/privacy"
-              className="text-xs text-white/90 hover:text-white transition-colors"
-            >
-              Privacy Policy
-            </Link>
-            <Link
-              href="/terms"
-              className="text-xs text-white/90 hover:text-white transition-colors"
-            >
-              Terms of Service
-            </Link>
-            <Link
-              href="/cookies"
-              className="text-xs text-white/90 hover:text-white transition-colors"
-            >
-              Cookie Policy
-            </Link>
+            {[
+              { href: "/privacy", label: "Privacy Policy" },
+              { href: "/terms", label: "Terms of Service" },
+              { href: "/cookies", label: "Cookie Policy" },
+            ].map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className="text-xs text-white/90 hover:text-white transition-colors"
+              >
+                {link.label}
+              </Link>
+            ))}
           </div>
         </div>
       </div>

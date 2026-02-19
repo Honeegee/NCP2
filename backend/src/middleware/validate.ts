@@ -10,8 +10,12 @@ export function validate(schema: ZodSchema) {
   return (req: Request, _res: Response, next: NextFunction): void => {
     const result = schema.safeParse(req.body);
     if (!result.success) {
+      const flat = result.error.flatten();
+      const fieldMessages = Object.values(flat.fieldErrors).flat();
+      const allMessages = [...flat.formErrors, ...fieldMessages];
+      const message = allMessages[0] || "Validation failed";
       return next(
-        new ValidationError("Validation failed", result.error.flatten())
+        new ValidationError(message, flat)
       );
     }
     req.body = result.data;

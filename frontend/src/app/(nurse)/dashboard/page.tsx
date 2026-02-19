@@ -52,6 +52,7 @@ export default function NurseDashboard() {
     }
   }, [user]);
 
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -116,7 +117,7 @@ export default function NurseDashboard() {
                 <div className="flex flex-col sm:flex-row gap-3">
                   <Button
                     asChild
-                    className="profile-btn-primary hidden sm:inline-flex"
+                    className="btn-primary-green hidden sm:inline-flex"
                   >
                     <Link href="/jobs">
                       <Briefcase className="h-4 w-4 mr-2" />
@@ -245,7 +246,7 @@ export default function NurseDashboard() {
                     ))}
                   </div>
                 </div>
-                <Button size="lg" className="profile-btn-primary flex-shrink-0 shadow-md hover:shadow-lg" asChild>
+                <Button size="lg" className="btn-primary-green flex-shrink-0 shadow-md hover:shadow-lg" asChild>
                   <Link href="/profile">
                     Complete Now
                     <ArrowRight className="h-4 w-4 ml-2" />
@@ -287,7 +288,7 @@ export default function NurseDashboard() {
                   <p className="text-sm text-muted-foreground max-w-sm mx-auto mb-4">
                     Complete your profile to unlock personalized job recommendations tailored to your skills and experience.
                   </p>
-                   <Button asChild className="profile-btn-primary">
+                   <Button asChild className="btn-primary-green">
                     <Link href="/profile">
                       Complete Your Profile
                       <ArrowRight className="h-4 w-4 ml-2" />

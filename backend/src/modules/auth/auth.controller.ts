@@ -11,10 +11,40 @@ export async function loginHandler(req: Request, res: Response, next: NextFuncti
   }
 }
 
+export async function checkEmailHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { email } = req.body;
+    const result = await authService.checkEmail(email);
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function registerHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const result = await authService.register(req.body);
     res.status(201).json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function verifyEmailHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { token } = req.body;
+    const result = await authService.verifyEmail(token);
+    res.json({ data: result });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function resendVerificationHandler(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { email } = req.body;
+    const result = await authService.resendVerification(email);
+    res.json({ data: result });
   } catch (err) {
     next(err);
   }

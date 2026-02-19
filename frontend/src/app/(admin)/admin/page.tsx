@@ -280,7 +280,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <Link href="/admin/nurses">
-              <Button className="w-full gradient-primary border-0 shadow-md">
+              <Button className="w-full btn-primary-green border-0 shadow-md">
                 <Users className="h-4 w-4 mr-2" />
                 View All Nurses
               </Button>
@@ -297,7 +297,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <Link href="/admin/jobs">
-              <Button className="w-full gradient-primary border-0 shadow-md">
+              <Button className="w-full btn-primary-green border-0 shadow-md">
                 <Briefcase className="h-4 w-4 mr-2" />
                 Manage Jobs
               </Button>

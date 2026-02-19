@@ -43,7 +43,6 @@ const ADMIN_LINKS: NavLink[] = [
 function Logo({ isAdmin }: { isAdmin: boolean }) {
   return (
     <Link href={isAdmin ? "/admin" : "/dashboard"} className="flex items-center group">
-      {/* Full Logo with white shadow */}
       <div className="relative group-hover:scale-105 transition-transform">
         <Image
           src="/logo.png"
@@ -51,9 +50,7 @@ function Logo({ isAdmin }: { isAdmin: boolean }) {
           width={220}
           height={60}
           className="h-12 w-auto object-contain"
-          style={{
-            filter: 'drop-shadow(0 2px 4px rgba(255, 255, 255, 0.9))'
-          }}
+          style={{ filter: 'drop-shadow(0 2px 4px rgba(255, 255, 255, 0.9))' }}
           priority
           unoptimized
         />
@@ -113,10 +110,7 @@ function UserMenu({
 
   return (
     <div ref={menuRef} className="relative">
-      <button
-        onClick={() => setUserMenuOpen(!userMenuOpen)}
-        className="relative"
-      >
+      <button onClick={() => setUserMenuOpen(!userMenuOpen)} className="relative">
         <Avatar className="h-11 w-11 border-2 border-white/40 shadow-lg cursor-pointer hover:border-white/60 transition-all">
           {profilePictureUrl ? (
             <>
@@ -146,7 +140,6 @@ function UserMenu({
             <p className="text-sm font-semibold text-gray-900">{userName}</p>
             <p className="text-xs text-gray-500 truncate">{user.email}</p>
           </div>
-
           <>
             <Link
               href="/profile"
@@ -165,7 +158,6 @@ function UserMenu({
               Settings
             </Link>
           </>
-
           <button
             onClick={onSignOut}
             className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 w-full border-t mt-1"
@@ -238,11 +230,7 @@ function MobileNav({
           >
             <Avatar className="h-10 w-10 border-2 border-white/40">
               {profilePictureUrl && (
-                <AvatarImage
-                  src={profilePictureUrl}
-                  alt={userName}
-                  className="object-cover"
-                />
+                <AvatarImage src={profilePictureUrl} alt={userName} className="object-cover" />
               )}
               <AvatarFallback className="bg-white/30 text-white text-sm font-bold">
                 {initials}
@@ -256,7 +244,6 @@ function MobileNav({
                 <p className="text-sm font-semibold text-gray-900">{userName}</p>
                 <p className="text-xs text-gray-500 truncate">{user.email}</p>
               </div>
-
               <>
                 <Link
                   href="/profile"
@@ -275,7 +262,6 @@ function MobileNav({
                   Settings
                 </Link>
               </>
-
               <button
                 onClick={onSignOut}
                 className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 w-full border-t mt-1"
@@ -332,9 +318,7 @@ export function Navbar() {
       <nav className={navClasses}>
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8">
           <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div className="h-12 w-48 rounded-lg bg-white/20 animate-pulse" />
-            </div>
+            <div className="h-12 w-48 rounded-lg bg-white/20 animate-pulse" />
           </div>
         </div>
       </nav>
@@ -347,7 +331,6 @@ export function Navbar() {
         <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center group">
-              {/* Full Logo with white shadow */}
               <div className="relative group-hover:scale-105 transition-transform">
                 <Image
                   src="/logo.png"
@@ -360,19 +343,14 @@ export function Navbar() {
                 />
               </div>
             </Link>
-            
-            <div className="flex items-center gap-2 sm:gap-3">
-              <Link href="/login">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full h-10 px-10 font-semibold text-white gradient-primary hover:text-black hover:brightness-125 transition-all duration-300">
-                  Sign In
-                </Button>
-              </Link>
 
-              <Link href="/register">
-                <Button size="sm" className="h-10 px-10 font-semibold bg-white text-primary hover:bg-white/95 shadow-xl hover:shadow-2xl transition-all duration-300 hover:scale-105 group">
+            <div className="flex items-center">
+              <Link href="/login">
+                {/* ── Orange "Get Started" button ── */}
+                <Button
+                  size="sm"
+                  className="h-10 px-8 font-semibold text-white shadow-lg transition-all duration-300 hover:scale-105 btn-primary-green"
+                >
                   Get Started
                 </Button>
               </Link>
@@ -385,11 +363,13 @@ export function Navbar() {
 
   const isAdmin = user.role === "admin";
   const emailUsername = user.email?.split("@")[0] || "User";
-  const derivedFirstName = emailUsername.split(/[._-]/)[0].charAt(0).toUpperCase() + emailUsername.split(/[._-]/)[0].slice(1).toLowerCase();
+  const derivedFirstName =
+    emailUsername.split(/[._-]/)[0].charAt(0).toUpperCase() +
+    emailUsername.split(/[._-]/)[0].slice(1).toLowerCase();
   const firstName = user.firstName || derivedFirstName;
   const lastName = user.lastName || "";
   const userName = lastName ? `${firstName} ${lastName}` : firstName;
-  const initials = userName.split(' ').map(word => word.charAt(0)).join('').slice(0, 2).toUpperCase();
+  const initials = userName.split(" ").map((w) => w.charAt(0)).join("").slice(0, 2).toUpperCase();
   const profilePictureUrl = user.profilePictureUrl;
   const links = isAdmin ? ADMIN_LINKS : NURSE_LINKS;
 
@@ -400,7 +380,6 @@ export function Navbar() {
           <div className="flex items-center justify-between h-16">
             <Logo isAdmin={isAdmin} />
             <NavLinks links={links} pathname={pathname} />
-
             <div className="flex items-center gap-3">
               <NovuNotificationBell />
               <div className="hidden md:block">

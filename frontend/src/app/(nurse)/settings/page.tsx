@@ -152,7 +152,7 @@ export default function SettingsPage() {
             <div className="flex gap-3 pt-2">
               <Button
                 type="submit"
-                className="gradient-primary border-0 shadow-md"
+                className="btn-primary-green border-0 shadow-md"
                 disabled={loading}
               >
                 {loading ? (

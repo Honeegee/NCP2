@@ -240,7 +240,7 @@ export default function JobDetailPage() {
             <Button
               onClick={handleApply}
               disabled={isApplied || applyLoading}
-              className={isApplied ? "bg-emerald-600 hover:bg-emerald-600" : ""}
+              className={isApplied ? "bg-emerald-600 hover:bg-emerald-600" : "btn-primary-green border-0"}
               size="lg"
             >
               {applyLoading ? (

@@ -72,7 +72,8 @@ async function refreshAccessToken(): Promise<string> {
 
     const json = await res.json();
     const { accessToken, refreshToken: newRefresh } = json.data;
-    setTokens(accessToken, newRefresh);
+    // Keep the old refresh token if the backend doesn't return a new one
+    setTokens(accessToken, newRefresh || refreshToken);
     return accessToken;
   })();
 
