@@ -21,7 +21,18 @@ export async function listAllApplications(
   const repo = getRepo();
   const { data, error, count } = await repo.findAll(filters, offset, limit);
   if (error) throw new Error(error.message);
-  return { data: data || [], total: count || 0 };
+
+  // Fetch nurse profiles separately (no direct FK from job_applications to nurse_profiles)
+  const nurseUserIds = [...new Set((data || []).map((a: { nurse_user_id: string }) => a.nurse_user_id))];
+  const { data: nurses } = await repo.findNurseProfilesByUserIds(nurseUserIds);
+  const nurseMap = new Map((nurses || []).map((n: { user_id: string; first_name: string; last_name: string }) => [n.user_id, n]));
+
+  const enriched = (data || []).map((app: { nurse_user_id: string }) => ({
+    ...app,
+    nurse: nurseMap.get(app.nurse_user_id) || null,
+  }));
+
+  return { data: enriched, total: count || 0 };
 }
 
 export async function getApplication(id: string, userId: string, userRole: string) {

@@ -6,17 +6,19 @@ import { api, ApiError } from "@/lib/api-client";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Select, SelectOption } from "@/components/ui/select";
 import {
   MapPin,
   Search,
   Briefcase,
-  Filter,
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Building,
   Clock,
   DollarSign,
+  Globe,
+  X,
+  Filter,
 } from "lucide-react";
 import Link from "next/link";
 import { JobSidebar } from "@/components/jobs/JobSidebar";
@@ -31,14 +33,25 @@ export default function JobsPage() {
   const [allJobs, setAllJobs] = useState<Job[]>([]);
   const [appliedJobIds, setAppliedJobIds] = useState<Set<string>>(new Set());
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"matched" | "all">("matched");
+  const [viewMode, setViewMode] = useState<"matched" | "all" | "applied">("matched");
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
-  const [locationFilter, setLocationFilter] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
   const [applyLoading, setApplyLoading] = useState(false);
   const [page, setPage] = useState(1);
   const ITEMS_PER_PAGE = 8;
+
+  // Enhanced filters
+  const [search, setSearch] = useState("");
+  const [countryFilter, setCountryFilter] = useState<string>("all");
+  const [locationSearch, setLocationSearch] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("");
+  const [expFilter, setExpFilter] = useState<string>("");
+
+  // Derive unique filter options from jobs data
+  const filterOptions = useMemo(() => {
+    const countries = [...new Set(allJobs.map((j) => j.country).filter(Boolean))].sort();
+    const types = [...new Set(allJobs.map((j) => j.employment_type).filter(Boolean))].sort();
+    return { countries, types };
+  }, [allJobs]);
 
   useEffect(() => {
     async function fetchData() {
@@ -74,6 +87,7 @@ export default function JobsPage() {
     if (viewMode === "matched") {
       items = matches;
     } else {
+      // "all" and "applied" both start from the full list
       const matchMap = new Map(matches.map((m) => [m.job.id, m]));
       items = allJobs.map((job) => {
         const existing = matchMap.get(job.id);
@@ -87,12 +101,16 @@ export default function JobsPage() {
           }
         );
       });
-      // Sort by date for "All Jobs"
       items.sort(
         (a, b) =>
           new Date(b.job.created_at).getTime() -
           new Date(a.job.created_at).getTime()
       );
+    }
+
+    // Applied filter
+    if (viewMode === "applied") {
+      items = items.filter((m) => appliedJobIds.has(m.job.id));
     }
 
     // Apply filters
@@ -105,21 +123,38 @@ export default function JobsPage() {
           m.job.description.toLowerCase().includes(s)
       );
     }
-    if (locationFilter) {
-      const l = locationFilter.toLowerCase();
-      items = items.filter((m) => m.job.location.toLowerCase().includes(l));
+
+    // Country filter (specific country or all)
+    if (countryFilter && countryFilter !== "all") {
+      items = items.filter((m) => m.job.country === countryFilter);
     }
+
+    // Location/city text search
+    if (locationSearch) {
+      const loc = locationSearch.toLowerCase();
+      items = items.filter((m) =>
+        m.job.location.toLowerCase().includes(loc)
+      );
+    }
+
+    // Employment type filter
     if (typeFilter) {
       items = items.filter((m) => m.job.employment_type === typeFilter);
     }
 
+    // Experience level filter
+    if (expFilter) {
+      const maxExp = parseInt(expFilter, 10);
+      items = items.filter((m) => m.job.min_experience_years <= maxExp);
+    }
+
     return items;
-  }, [viewMode, matches, allJobs, search, locationFilter, typeFilter]);
+  }, [viewMode, matches, allJobs, search, countryFilter, locationSearch, typeFilter, expFilter, appliedJobIds]);
 
   // Reset page when filters or view mode change
   useEffect(() => {
     setPage(1);
-  }, [viewMode, search, locationFilter, typeFilter]);
+  }, [viewMode, search, countryFilter, locationSearch, typeFilter, expFilter]);
 
   // Paginate sidebar items
   const totalPages = Math.max(1, Math.ceil(sidebarItems.length / ITEMS_PER_PAGE));
@@ -164,6 +199,22 @@ export default function JobsPage() {
     }
   }
 
+  // Clear all filters
+  const clearFilters = () => {
+    setSearch("");
+    setCountryFilter("all");
+    setLocationSearch("");
+    setTypeFilter("");
+    setExpFilter("");
+  };
+
+  const hasActiveFilters = 
+    search || 
+    countryFilter !== "all" || 
+    locationSearch || 
+    typeFilter || 
+    expFilter;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -175,115 +226,188 @@ export default function JobsPage() {
     );
   }
 
-  // Filter dropdown options
-  const sourceJobs = viewMode === "matched" ? matches.map((m) => m.job) : allJobs;
-  const locations = [...new Set(sourceJobs.map((j) => j.location))];
-  const types = [...new Set(sourceJobs.map((j) => j.employment_type))];
   const totalCount = viewMode === "matched" ? matches.length : allJobs.length;
+  const filteredCount = sidebarItems.length;
 
   return (
     <div className="space-y-4 animate-fade-in">
-      {/* Header: title left, controls right */}
-      <div className="flex flex-col md:flex-row md:items-center gap-3">
-        <div className="flex-shrink-0">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
           <h1 className="text-2xl font-bold">Job Opportunities</h1>
           <p className="text-sm text-muted-foreground">
             {viewMode === "matched"
               ? `${matches.length} matched to your profile`
-              : `${allJobs.length} available`}
+              : viewMode === "applied"
+                ? `${appliedJobIds.size} applied`
+                : `${allJobs.length} available`}
+            {hasActiveFilters && filteredCount !== totalCount && (
+              <span className="ml-2 text-primary">
+                ({filteredCount} matching filters)
+              </span>
+            )}
           </p>
         </div>
+      </div>
 
-        <div className="flex flex-col sm:flex-row flex-wrap gap-2 items-stretch sm:items-center md:ml-auto">
-          {/* View Mode Toggle */}
-          <div className="flex bg-muted rounded-lg p-0.5 flex-shrink-0">
-            <button
-              onClick={() => {
-                setViewMode("matched");
-                setSelectedJobId(null);
-              }}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                viewMode === "matched"
-                  ? "bg-background shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Matched ({matches.length})
-            </button>
-            <button
-              onClick={() => {
-                setViewMode("all");
-                setSelectedJobId(null);
-              }}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                viewMode === "all"
-                  ? "bg-background shadow-sm text-foreground"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              All Jobs ({allJobs.length})
-            </button>
+      {/* Filters row */}
+      <div className="space-y-3">
+        {/* Primary filters row */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* View Mode: Matched | All | Applied */}
+          <div className="flex bg-muted rounded-lg p-0.5">
+            {([
+              { key: "matched" as const, label: `Matched (${matches.length})` },
+              { key: "all" as const, label: `All Jobs (${allJobs.length})` },
+              { key: "applied" as const, label: `Applied (${appliedJobIds.size})` },
+            ]).map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => {
+                  setViewMode(key);
+                  setSelectedJobId(null);
+                }}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  viewMode === key
+                    ? "bg-background shadow-sm text-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
 
           {/* Search */}
-          <div className="relative">
+          <div className="relative ml-auto">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               placeholder="Search jobs..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 w-full sm:w-48"
+              className="pl-9 h-9 w-48"
+            />
+          </div>
+        </div>
+
+        {/* Secondary filters row */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Country Filter */}
+          <Select
+            value={countryFilter}
+            onChange={(e) => setCountryFilter(e.target.value)}
+            className="h-9 w-40"
+          >
+            <SelectOption value="all">
+              <span className="flex items-center gap-1.5">
+                <Globe className="h-3.5 w-3.5" />
+                All Countries
+              </span>
+            </SelectOption>
+            {filterOptions.countries.map((country) => (
+              <SelectOption key={country} value={country}>{country}</SelectOption>
+            ))}
+          </Select>
+
+          {/* Location/City Search */}
+          <div className="relative">
+            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              placeholder="City/Location..."
+              value={locationSearch}
+              onChange={(e) => setLocationSearch(e.target.value)}
+              className="pl-8 h-9 w-36"
             />
           </div>
 
-          {/* Location + Type filters */}
-          <div className="flex gap-2 flex-shrink min-w-0">
-            <div className="relative">
-              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <select
-                value={locationFilter}
-                onChange={(e) => setLocationFilter(e.target.value)}
-                className="h-9 border rounded-lg pl-9 pr-8 text-sm bg-background appearance-none cursor-pointer hover:border-primary/50 transition-colors"
-              >
-                <option value="">All Locations</option>
-                {locations.map((loc) => (
-                  <option key={loc} value={loc}>
-                    {loc}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            </div>
-            <div className="relative">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value)}
-                className="h-9 border rounded-lg pl-9 pr-8 text-sm bg-background appearance-none cursor-pointer hover:border-primary/50 transition-colors"
-              >
-                <option value="">All Types</option>
-                {types.map((type) => (
-                  <option key={type} value={type}>
-                    {type}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            </div>
-            {(search || locationFilter || typeFilter) && (
-              <button
-                onClick={() => {
-                  setSearch("");
-                  setLocationFilter("");
-                  setTypeFilter("");
-                }}
-                className="text-xs text-primary hover:underline px-2 whitespace-nowrap"
-              >
-                Clear
-              </button>
+          {/* Employment Type Filter */}
+          <Select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="h-9 w-32"
+          >
+            <SelectOption value="">All Types</SelectOption>
+            {filterOptions.types.map((type) => (
+              <SelectOption key={type} value={type}>
+                {type.charAt(0).toUpperCase() + type.slice(1).replace("-", " ")}
+              </SelectOption>
+            ))}
+          </Select>
+
+          {/* Experience Level Filter */}
+          <Select
+            value={expFilter}
+            onChange={(e) => setExpFilter(e.target.value)}
+            className="h-9 w-36"
+          >
+            <SelectOption value="">Any Experience</SelectOption>
+            <SelectOption value="1">Entry (0-1 yrs)</SelectOption>
+            <SelectOption value="3">Mid (2-3 yrs)</SelectOption>
+            <SelectOption value="5">Senior (4-5 yrs)</SelectOption>
+            <SelectOption value="100">Expert (5+ yrs)</SelectOption>
+          </Select>
+
+          {/* Clear Filters */}
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary px-2 py-1.5 rounded-md hover:bg-muted transition-colors"
+            >
+              <X className="h-3 w-3" />
+              Clear all
+            </button>
+          )}
+        </div>
+
+        {/* Active filters display */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+              <Filter className="h-3 w-3" />
+              Active:
+            </span>
+            {search && (
+              <Badge variant="secondary" className="text-xs gap-1">
+                Search: &quot;{search}&quot;
+                <button onClick={() => setSearch("")} className="ml-0.5 hover:text-destructive">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+            {countryFilter !== "all" && (
+              <Badge variant="secondary" className="text-xs gap-1">
+                Country: {countryFilter}
+                <button onClick={() => setCountryFilter("all")} className="ml-0.5 hover:text-destructive">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+            {locationSearch && (
+              <Badge variant="secondary" className="text-xs gap-1">
+                Location: {locationSearch}
+                <button onClick={() => setLocationSearch("")} className="ml-0.5 hover:text-destructive">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+            {typeFilter && (
+              <Badge variant="secondary" className="text-xs gap-1">
+                Type: {typeFilter}
+                <button onClick={() => setTypeFilter("")} className="ml-0.5 hover:text-destructive">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
+            )}
+            {expFilter && (
+              <Badge variant="secondary" className="text-xs gap-1">
+                Exp: ≤{expFilter} yrs
+                <button onClick={() => setExpFilter("")} className="ml-0.5 hover:text-destructive">
+                  <X className="h-3 w-3" />
+                </button>
+              </Badge>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       {/* Desktop: Sidebar + Detail Panel */}
@@ -343,11 +467,19 @@ export default function JobsPage() {
               <p className="text-muted-foreground font-medium mb-1">
                 {totalCount === 0 ? "No jobs available" : "No jobs match your filters"}
               </p>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground mb-4">
                 {totalCount === 0
                   ? "Check back later for new opportunities."
                   : "Try adjusting your search criteria."}
               </p>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="text-sm text-primary hover:underline"
+                >
+                  Clear all filters
+                </button>
+              )}
             </CardContent>
           </Card>
         ) : (

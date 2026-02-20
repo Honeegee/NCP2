@@ -3,17 +3,23 @@ import { SupabaseClient } from "@supabase/supabase-js";
 export class JobsRepository {
   constructor(private supabase: SupabaseClient) {}
 
-  async findAll(filters: { location?: string; employment_type?: string }, offset: number, limit: number) {
+  async findAll(filters: { location?: string; employment_type?: string; country?: string; include_inactive?: boolean }, offset: number, limit: number) {
     let query = this.supabase
       .from("jobs")
-      .select("*", { count: "exact" })
-      .eq("is_active", true);
+      .select("*", { count: "exact" });
+
+    if (!filters.include_inactive) {
+      query = query.eq("is_active", true);
+    }
 
     if (filters.location) {
       query = query.ilike("location", `%${filters.location}%`);
     }
     if (filters.employment_type) {
       query = query.eq("employment_type", filters.employment_type);
+    }
+    if (filters.country) {
+      query = query.eq("country", filters.country);
     }
 
     const { data, error, count } = await query
@@ -55,6 +61,13 @@ export class JobsRepository {
       .eq("id", id)
       .select("*")
       .single();
+  }
+
+  async hardDelete(id: string) {
+    return this.supabase
+      .from("jobs")
+      .delete()
+      .eq("id", id);
   }
 
   async createMany(jobs: Record<string, unknown>[]) {

@@ -47,31 +47,8 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Quick Links */}
-          <div className="lg:col-span-2">
-            <h4 className="font-bold text-sm mb-4 text-gray-900 uppercase tracking-wide">Platform</h4>
-            <ul className="space-y-2.5">
-              {[
-                { href: "/dashboard", label: "Dashboard" },
-                { href: "/jobs", label: "Job Matches" },
-                { href: "/profile", label: "My Profile" },
-                { href: "/certifications", label: "Certifications" },
-              ].map((link) => (
-                <li key={link.href}>
-                  <Link
-                    href={link.href}
-                    className="text-sm text-gray-700 hover:text-gray-900 transition-colors inline-flex items-center gap-1 group"
-                  >
-                    <span>{link.label}</span>
-                    <ArrowRight className="h-3 w-3 opacity-0 -ml-1 group-hover:opacity-100 group-hover:ml-0 transition-all" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-
           {/* Resources */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-3 lg:pl-40">
             <h4 className="font-semibold text-sm mb-3 text-gray-900">Resources</h4>
             <ul className="space-y-2.5">
               {[
@@ -94,7 +71,7 @@ export function Footer() {
           </div>
 
           {/* Contact */}
-          <div className="lg:col-span-3">
+          <div className="lg:col-span-4 lg:pl-32">
             <h4 className="font-semibold text-sm mb-3 text-gray-900">Contact Us</h4>
             <ul className="space-y-2.5 mb-5">
               <li className="flex items-start gap-3 group">

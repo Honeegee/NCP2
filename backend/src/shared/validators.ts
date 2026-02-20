@@ -120,6 +120,7 @@ export const jobSchema = z.object({
   salary_min: z.coerce.number().nullable().optional(),
   salary_max: z.coerce.number().nullable().optional(),
   salary_currency: z.string().default("PHP"),
+  country: z.string().optional().default("Philippines"),
 });
 
 export const applicationStatusSchema = z.object({

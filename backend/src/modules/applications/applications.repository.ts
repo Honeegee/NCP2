@@ -63,7 +63,7 @@ export class ApplicationsRepository {
   async findAll(filters: { status?: string; job_id?: string }, offset: number, limit: number) {
     let query = this.supabase
       .from("job_applications")
-      .select("*, job:jobs(*), nurse:nurse_profiles!job_applications_nurse_user_id_fkey(first_name, last_name, user_id)", { count: "exact" });
+      .select("*, job:jobs(*)", { count: "exact" });
 
     if (filters.status) {
       query = query.eq("status", filters.status);
@@ -77,5 +77,15 @@ export class ApplicationsRepository {
       .range(offset, offset + limit - 1);
 
     return { data, error, count };
+  }
+
+  // Fetch nurse profiles by user IDs
+  async findNurseProfilesByUserIds(userIds: string[]) {
+    if (userIds.length === 0) return { data: [], error: null };
+    const { data, error } = await this.supabase
+      .from("nurse_profiles")
+      .select("user_id, first_name, last_name")
+      .in("user_id", userIds);
+    return { data, error };
   }
 }

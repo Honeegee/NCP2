@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(dir:*)",
-      "WebFetch(domain:nursecarepro.com)"
+      "WebFetch(domain:nursecarepro.com)",
+      "Bash(npx next build:*)",
+      "Bash(npx tsc:*)",
+      "Bash(timeout 8 npx tsx:*)"
     ]
   }
 }

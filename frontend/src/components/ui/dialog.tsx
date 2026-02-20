@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 interface DialogContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
-  registerDialog: (element: HTMLDialogElement | null) => void;
 }
 
 const DialogContext = React.createContext<DialogContextValue | undefined>(
@@ -30,7 +29,6 @@ interface DialogProps {
 
 function Dialog({ children, open: controlledOpen, onOpenChange }: DialogProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
-  const dialogRef = React.useRef<HTMLDialogElement>(null);
 
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : uncontrolledOpen;
@@ -45,25 +43,8 @@ function Dialog({ children, open: controlledOpen, onOpenChange }: DialogProps) {
     [isControlled, onOpenChange]
   );
 
-  const registerDialog = React.useCallback((element: HTMLDialogElement | null) => {
-    dialogRef.current = element;
-  }, []);
-
-  React.useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
-
-    if (open) {
-      // Use open attribute instead of showModal() to allow popovers to work
-      dialog.setAttribute('open', '');
-      dialog.show(); // Use show() instead of showModal() to avoid top-layer
-    } else {
-      dialog.close();
-    }
-  }, [open]);
-
   return (
-    <DialogContext.Provider value={{ open, setOpen, registerDialog }}>
+    <DialogContext.Provider value={{ open, setOpen }}>
       {children}
     </DialogContext.Provider>
   );
@@ -89,69 +70,79 @@ function DialogTrigger({
 }
 
 const DialogContent = React.forwardRef<
-  HTMLDialogElement,
-  React.DialogHTMLAttributes<HTMLDialogElement>
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement>
 >(({ className, children, ...props }, ref) => {
-  const { setOpen, registerDialog } = useDialogContext();
+  const { open, setOpen } = useDialogContext();
 
-  const combinedRef = React.useCallback(
-    (node: HTMLDialogElement | null) => {
-      registerDialog(node);
-      if (typeof ref === "function") {
-        ref(node);
-      } else if (ref) {
-        ref.current = node;
-      }
-    },
-    [registerDialog, ref]
-  );
-
-  const handleClick = (e: React.MouseEvent<HTMLDialogElement>) => {
-    // Close when clicking the backdrop (the dialog element itself, not its children)
-    if (e.target === e.currentTarget) {
-      setOpen(false);
+  // Lock body scroll when open
+  React.useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
     }
-  };
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
 
-  const handleClose = () => {
-    setOpen(false);
-  };
+  // Close on Escape
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [open, setOpen]);
+
+  if (!open) return null;
 
   return (
-    <dialog
-      ref={combinedRef}
-      className={cn(
-        "fixed left-1/2 top-1/2 z-[100] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-background p-6 shadow-lg backdrop:bg-black/50 open:animate-in open:fade-in-0 open:zoom-in-95",
-        className
-      )}
-      onClick={handleClick}
-      onClose={handleClose}
-      {...props}
-    >
-      {children}
-      <button
-        type="button"
-        className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 z-[100] bg-black/50 animate-in fade-in-0"
         onClick={() => setOpen(false)}
-        aria-label="Close"
+      />
+      {/* Content */}
+      <div
+        ref={ref}
+        className={cn(
+          "fixed left-1/2 top-1/2 z-[101] w-full max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-background p-6 shadow-lg",
+          "animate-in fade-in-0 zoom-in-95 duration-200",
+          className
+        )}
+        {...props}
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-4 w-4"
+        {children}
+        <button
+          type="button"
+          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+          onClick={() => setOpen(false)}
+          aria-label="Close"
         >
-          <path d="M18 6 6 18" />
-          <path d="m6 6 12 12" />
-        </svg>
-      </button>
-    </dialog>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-4 w-4"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+      </div>
+    </>
   );
 });
 DialogContent.displayName = "DialogContent";

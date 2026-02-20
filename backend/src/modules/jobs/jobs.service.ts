@@ -15,7 +15,7 @@ function getRepo() {
 }
 
 export async function listJobs(
-  filters: { location?: string; employment_type?: string },
+  filters: { location?: string; employment_type?: string; country?: string; include_inactive?: boolean },
   offset: number,
   limit: number
 ) {
@@ -77,6 +77,16 @@ export async function deleteJob(id: string) {
   const { data, error } = await repo.softDelete(id);
   if (error) throw new Error(error.message);
   return data;
+}
+
+export async function permanentlyDeleteJob(id: string) {
+  const repo = getRepo();
+  const { data: existing, error: fetchErr } = await repo.findById(id);
+  if (fetchErr || !existing) throw new NotFoundError("Job not found");
+
+  const { error } = await repo.hardDelete(id);
+  if (error) throw new Error(error.message);
+  return { message: "Job permanently deleted" };
 }
 
 const VALID_EMPLOYMENT_TYPES = ["full-time", "part-time", "contract"];
@@ -165,6 +175,7 @@ export async function bulkCreateJobs(csvBuffer: Buffer) {
       salary_min: salaryMin,
       salary_max: salaryMax,
       salary_currency: (row.salary_currency || "USD").trim(),
+      country: (row.country || "Philippines").trim(),
     });
   }
 

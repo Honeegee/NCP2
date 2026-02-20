@@ -8,6 +8,8 @@ export async function listJobs(req: Request, res: Response, next: NextFunction) 
     const filters = {
       location: req.query.location as string | undefined,
       employment_type: req.query.employment_type as string | undefined,
+      country: req.query.country as string | undefined,
+      include_inactive: req.query.include_inactive === "true",
     };
     const { data, total } = await jobsService.listJobs(filters, offset, limit);
     res.json(paginatedResponse(data, total, { page, limit }));
@@ -39,6 +41,13 @@ export async function deleteJob(req: Request, res: Response, next: NextFunction)
   try {
     const job = await jobsService.deleteJob(req.params.id);
     res.json({ data: { message: "Job deactivated successfully", job } });
+  } catch (err) { next(err); }
+}
+
+export async function permanentlyDeleteJob(req: Request, res: Response, next: NextFunction) {
+  try {
+    const result = await jobsService.permanentlyDeleteJob(req.params.id);
+    res.json({ data: result });
   } catch (err) { next(err); }
 }
 

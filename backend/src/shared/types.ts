@@ -138,6 +138,7 @@ export interface Job {
   salary_min: number | null;
   salary_max: number | null;
   salary_currency: string;
+  country: string;
   is_active: boolean;
   created_at: string;
 }

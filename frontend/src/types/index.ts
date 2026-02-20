@@ -138,6 +138,7 @@ export interface Job {
   salary_min: number | null;
   salary_max: number | null;
   salary_currency: string;
+  country: string;
   is_active: boolean;
   created_at: string;
 }
@@ -192,6 +193,11 @@ export interface JobApplication {
   status: ApplicationStatus;
   applied_at: string;
   updated_at: string;
+}
+
+export interface JobApplicationWithDetails extends JobApplication {
+  job: Job;
+  nurse: { first_name: string; last_name: string; user_id: string } | null;
 }
 
 export interface NurseFullProfile extends NurseProfile {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, FormEvent, useEffect } from "react";
+import { toast } from "sonner";
 import { api } from "@/lib/api-client";
 import {
   Sheet,
@@ -29,6 +30,7 @@ interface JobFormData {
   salary_min: string;
   salary_max: string;
   salary_currency: string;
+  country: string;
 }
 
 const emptyForm: JobFormData = {
@@ -43,6 +45,7 @@ const emptyForm: JobFormData = {
   salary_min: "",
   salary_max: "",
   salary_currency: "USD",
+  country: "Philippines",
 };
 
 interface JobFormDialogProps {
@@ -77,6 +80,7 @@ export function JobFormDialog({
           salary_min: editingJob.salary_min ? String(editingJob.salary_min) : "",
           salary_max: editingJob.salary_max ? String(editingJob.salary_max) : "",
           salary_currency: editingJob.salary_currency || "USD",
+          country: editingJob.country || "Philippines",
         });
       } else {
         setFormData(emptyForm);
@@ -113,6 +117,7 @@ export function JobFormDialog({
         salary_min: formData.salary_min ? parseFloat(formData.salary_min) : null,
         salary_max: formData.salary_max ? parseFloat(formData.salary_max) : null,
         salary_currency: formData.salary_currency || "USD",
+        country: formData.country.trim() || "Philippines",
       };
 
       if (!payload.title || !payload.description || !payload.location || !payload.facility_name) {
@@ -123,14 +128,24 @@ export function JobFormDialog({
 
       if (editingJob) {
         await api.put(`/jobs/${editingJob.id}`, payload);
+        toast.success("Job updated successfully", {
+          description: `"${payload.title}" has been updated.`,
+        });
       } else {
         await api.post("/jobs", payload);
+        toast.success("Job created successfully", {
+          description: `"${payload.title}" is now live and visible to nurses.`,
+        });
       }
 
       onOpenChange(false);
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      const message = err instanceof Error ? err.message : "Something went wrong";
+      setError(message);
+      toast.error(editingJob ? "Failed to update job" : "Failed to create job", {
+        description: message,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -212,7 +227,7 @@ export function JobFormDialog({
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">
                   Location & Type
                 </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="job-location">
                       Location <span className="text-destructive">*</span>
@@ -225,6 +240,27 @@ export function JobFormDialog({
                       required
                     />
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="job-country">Country</Label>
+                    <Select
+                      id="job-country"
+                      value={formData.country}
+                      onChange={(e) => updateField("country", e.target.value)}
+                    >
+                      <SelectOption value="Philippines">Philippines</SelectOption>
+                      <SelectOption value="USA">USA</SelectOption>
+                      <SelectOption value="UK">UK</SelectOption>
+                      <SelectOption value="Canada">Canada</SelectOption>
+                      <SelectOption value="Australia">Australia</SelectOption>
+                      <SelectOption value="Singapore">Singapore</SelectOption>
+                      <SelectOption value="UAE">UAE</SelectOption>
+                      <SelectOption value="Saudi Arabia">Saudi Arabia</SelectOption>
+                      <SelectOption value="Germany">Germany</SelectOption>
+                      <SelectOption value="Japan">Japan</SelectOption>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="job-type">Employment Type</Label>
                     <Select

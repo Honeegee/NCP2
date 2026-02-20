@@ -22,14 +22,16 @@ NCPnext is a full-stack nurse registration and staffing platform. Nurses registe
                                             │
                              ┌──────────────▼──────────────────────┐
                              │  Supabase PostgreSQL + Storage      │
-                             │  9 tables, RLS enabled              │
+                             │  12 tables, RLS enabled             │
                              └─────────────────────────────────────┘
 ```
 
 **External Services:**
-- **Resend** — Transactional emails
-- **Novu** — Push notifications
+- **Resend** — Transactional emails (verification, password reset)
+- **Novu** — In-app notification center with real-time updates
 - **Google Generative AI (Gemini)** — Resume parsing fallback
+- **OpenAI** — AI-powered job matching with embeddings
+- **OAuth Providers** — Google, LinkedIn, Facebook SSO
 
 ---
 
@@ -40,28 +42,32 @@ NCP2/
 ├── frontend/                         # Next.js 16 (App Router, React 19)
 │   ├── src/
 │   │   ├── app/
-│   │   │   ├── (auth)/               # Login, register, password reset
-│   │   │   ├── (nurse)/              # Dashboard, jobs, profile, settings
-│   │   │   ├── (admin)/              # Admin dashboard, job/nurse management
+│   │   │   ├── (auth)/               # Login, register, password reset, verify-email
+│   │   │   ├── (nurse)/              # Dashboard, jobs, profile, settings, notifications
+│   │   │   ├── (admin)/              # Admin dashboard, job/nurse management, notifications
+│   │   │   ├── sso/callback/         # OAuth callback handler
 │   │   │   └── page.tsx              # Landing page
 │   │   ├── components/
 │   │   │   ├── ui/                   # Reusable UI primitives (button, card, dialog, etc.)
 │   │   │   ├── jobs/                 # JobDetailPanel, JobSidebar, MatchScoreCircle
 │   │   │   ├── profile/modals/       # Profile section edit modals
-│   │   │   ├── registration/         # Multi-step registration wizard
-│   │   │   └── shared/               # Navbar, Footer, NotificationBell
+│   │   │   ├── shared/               # Navbar, Footer, NotificationBell, NotificationInbox
+│   │   │   └── sso/                  # SSOButtons (Google, LinkedIn, Facebook)
 │   │   ├── lib/
 │   │   │   ├── api-client.ts         # Fetch wrapper with token refresh
 │   │   │   ├── auth-context.tsx      # AuthProvider (JWT-based)
+│   │   │   ├── onboarding-tour.ts    # Driver.js powered first-login tour
 │   │   │   └── validators.ts         # Zod schemas
 │   │   └── types/
-│   └── supabase/migrations/          # Database migration SQL files
+│   └── supabase/migrations/          # Database migration SQL files (001-011)
 │
 ├── backend/                          # Express.js + TypeScript
 │   ├── src/
 │   │   ├── app.ts                    # Express app setup
 │   │   ├── server.ts                 # Entry point
-│   │   ├── config/env.ts             # Env var validation
+│   │   ├── config/
+│   │   │   ├── env.ts                # Env var validation
+│   │   │   └── passport.ts           # OAuth strategies (Google, Facebook, LinkedIn)
 │   │   ├── middleware/
 │   │   │   ├── auth.ts               # JWT verification → req.user
 │   │   │   ├── roles.ts              # requireRole() factory
@@ -70,9 +76,9 @@ NCP2/
 │   │   │   ├── rate-limit.ts         # Per-endpoint rate limiting
 │   │   │   └── pagination.ts         # ?page=&limit= → req.pagination
 │   │   ├── modules/
-│   │   │   ├── auth/                 # Register, login, password reset
+│   │   │   ├── auth/                 # Register, login, password reset, email verification, SSO
 │   │   │   ├── nurses/               # Profiles, experience, education, skills, certs
-│   │   │   ├── jobs/                 # CRUD + matching
+│   │   │   ├── jobs/                 # CRUD + matching (rule-based + AI)
 │   │   │   ├── resumes/              # Upload, parse, download
 │   │   │   └── applications/         # Apply, list, status updates
 │   │   └── shared/
@@ -80,12 +86,17 @@ NCP2/
 │   │       ├── helpers.ts            # getNurseId, recalculateYearsOfExperience
 │   │       ├── validators.ts         # Zod schemas
 │   │       ├── job-matcher.ts        # Rule-based matching algorithm
-│   │       ├── resume-parser.ts      # PDF/Word text extraction
+│   │       ├── ai-job-matcher.ts     # OpenAI embeddings-based semantic matching
+│   │       ├── openai-client.ts      # Embedding generation with DB caching
 │   │       ├── data-extractor.ts     # Regex-based resume data extraction
-│   │       └── ai-resume-parser.ts   # Gemini AI fallback
+│   │       ├── ai-resume-parser.ts   # Gemini AI fallback
+│   │       ├── security.ts           # Account lockout, token generation
+│   │       ├── email-templates.ts    # HTML/text email templates
+│   │       ├── resend.ts             # Email service wrapper
+│   │       └── novu.ts               # Notification service wrapper
 │   └── package.json
 │
-└── BACKEND_ARCHITECTURE.md
+└── System_ARCHITECTURE.md
 ```
 
 ---
@@ -105,8 +116,12 @@ NCP2/
 | Zod | 3.24 | Validation |
 | Multer | 1.4 | File uploads |
 | Helmet | 8.1 | Security headers |
-| pdf-parse / mammoth / word-extractor | — | Resume text extraction |
+| Passport.js | 0.7 | OAuth authentication (Google, Facebook, LinkedIn) |
+| OpenAI | 6.21 | AI embeddings for job matching |
 | Google Generative AI | 0.24 | AI resume parsing |
+| Novu | 2.6 | Notification service |
+| Resend | 6.9 | Transactional emails |
+| pdf-parse / mammoth / word-extractor | — | Resume text extraction |
 
 ### Frontend
 
@@ -120,6 +135,9 @@ NCP2/
 | Zod | 4.3 | Validation |
 | Sonner | 2.0 | Toast notifications |
 | Lucide React | 0.563 | Icons |
+| Novu Next.js | 3.14 | In-app notification inbox |
+| Driver.js | 1.4 | Onboarding tour |
+| Google Generative AI | 0.24 | Client-side AI features |
 
 ---
 
@@ -174,12 +192,17 @@ All routes are under `/api/v1/`. Protected routes require `Authorization: Bearer
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/auth/register` | None | Create account + nurse profile, returns JWT pair |
+| POST | `/auth/register` | None | Create account + nurse profile, sends verification email |
 | POST | `/auth/login` | None | Email/password login (rate limited: 10/15min) |
+| POST | `/auth/check-email` | None | Check if email exists and if it uses SSO |
+| POST | `/auth/verify-email` | None | Verify email with token |
+| POST | `/auth/resend-verification` | None | Resend verification email |
 | POST | `/auth/refresh` | None | Refresh token → new access token |
 | POST | `/auth/forgot-password` | None | Send reset email (3/15min) |
 | POST | `/auth/reset-password` | None | Reset password with token (5/15min) |
 | POST | `/auth/change-password` | Bearer | Change password (5/15min) |
+| GET | `/auth/sso/:provider` | None | Initiate OAuth flow (google, facebook, linkedin) |
+| GET | `/auth/sso/:provider/callback` | None | OAuth callback handler |
 
 ### Nurses
 
@@ -205,7 +228,7 @@ All routes are under `/api/v1/`. Protected routes require `Authorization: Bearer
 | POST | `/jobs` | Admin | Create job |
 | PUT | `/jobs/:id` | Admin | Update job |
 | DELETE | `/jobs/:id` | Admin | Soft-delete (deactivate) job |
-| GET | `/jobs/matches` | Nurse | Get job matches for current user |
+| GET | `/jobs/matches` | Nurse | Get AI-powered job matches for current user |
 
 ### Resumes
 
@@ -236,15 +259,41 @@ All routes are under `/api/v1/`. Protected routes require `Authorization: Bearer
 | Access | 24h | `{ id, email, role }` | Sent as `Bearer` header |
 | Refresh | 7d | `{ id }` | Used to obtain new access tokens |
 
+### Single Sign-On (SSO)
+
+Users can authenticate via OAuth providers:
+
+| Provider | Flow | Notes |
+|----------|------|-------|
+| Google | Passport.js OAuth 2.0 | Standard flow |
+| Facebook | Passport.js OAuth 2.0 | Standard flow |
+| LinkedIn | Manual OpenID Connect | Custom implementation (passport strategy outdated) |
+
+**SSO Flow:**
+1. User clicks SSO button → redirects to `/api/v1/auth/sso/:provider`
+2. Backend redirects to OAuth provider consent screen
+3. Provider redirects back with authorization code
+4. Backend exchanges code for access token, fetches profile
+5. Backend creates/links user account, generates JWT pair
+6. Backend redirects to `/sso/callback?accessToken=...&refreshToken=...&isNewUser=...`
+7. Frontend stores tokens and redirects to dashboard or profile (for new users)
+
+**Account Linking:**
+- If email already exists, SSO provider is linked to existing account
+- SSO-only users have `password_hash = NULL`
+- Users can link multiple SSO providers to one account
+
 ### Security Features
 
 - **Password hashing:** bcrypt, 12 salt rounds
 - **Account lockout:** 5 failed attempts → 30-minute lockout
 - **Password strength:** Min 8 chars, uppercase, lowercase, digit, special char
+- **Email verification:** Required for manual sign-ups (24hr token expiry)
 - **Rate limiting:** Per-endpoint, IP-based
-- **Email enumeration prevention:** Forgot-password always returns success
+- **Email enumeration prevention:** Forgot-password and resend-verification always return success
 - **HTTP headers:** Helmet (X-Frame-Options, CSP, HSTS, etc.)
 - **CORS:** Restricted to configured origin
+- **First login detection:** `last_login_at` field tracks new vs. returning users
 
 ### Roles
 
@@ -271,13 +320,15 @@ Request
 
 ## 8. Database Schema
 
-**9 tables**, all with Row-Level Security enabled.
+**12 tables**, all with Row-Level Security enabled.
 
 ```
 users ──────────── nurse_profiles
  (id, email,         (user_id FK, first_name, last_name,
   password_hash,      phone, address, years_of_exp,
-  role, created_at)   profile_picture, professional_status)
+  role,               profile_picture, professional_status,
+  email_verified,     location_type, country)
+  last_login_at)         │
                           │
           ┌───────────────┼───────────────────┐
           │               │                   │
@@ -301,13 +352,27 @@ users ──────────── nurse_profiles
                             required_certs,    password_reset_tokens
                             required_skills,    (user_id FK, token,
                             is_active)          expires_at, used)
+
+                         user_sso_providers
+                          (user_id FK,
+                           provider,           email_verification_tokens
+                           provider_user_id,    (user_id FK, token,
+                           provider_email,      expires_at, used)
+                           provider_data JSONB)
+
+                         embedding_cache
+                          (text_content UNIQUE,
+                           embedding vector,
+                           created_at)
 ```
 
 ---
 
 ## 9. Business Logic
 
-### Job Matching Algorithm (`shared/job-matcher.ts`)
+### Job Matching Algorithm
+
+#### Rule-Based (`shared/job-matcher.ts`)
 
 Scores nurses against jobs on three weighted criteria:
 
@@ -319,6 +384,23 @@ Scores nurses against jobs on three weighted criteria:
 
 - Non-nursing profiles with no cert matches: capped at 5%
 - Results sorted by score descending (0–100)
+
+#### AI-Powered (`shared/ai-job-matcher.ts`)
+
+Uses OpenAI embeddings for semantic similarity matching:
+
+| Criteria | Weight | Method |
+|----------|--------|--------|
+| Experience | 25% | Rule-based (same as above) |
+| Certifications | 30% | Semantic similarity via embeddings |
+| Skills | 25% | Semantic similarity + proficiency bonus |
+| Description | 20% | Profile-to-job-description semantic match |
+
+**Features:**
+- Embeddings cached in `embedding_cache` table (cost optimization)
+- Proficiency multiplier: Basic (1.0), Intermediate (1.1), Advanced (1.2)
+- Similarity threshold: 0.5 for semantic matches
+- Falls back to rule-based if OpenAI unavailable
 
 ### Resume Processing Pipeline
 
@@ -334,6 +416,18 @@ Upload (multipart) → Store in Supabase Storage
 
 Adding/updating/deleting experience entries triggers `recalculateYearsOfExperience()` which sums all entry durations and updates `nurse_profiles.years_of_experience`.
 
+### Email Verification Flow
+
+```
+Register → Create user (email_verified=false)
+  → Generate verification token (24hr expiry)
+  → Send email via Resend
+  → User clicks link → Verify token → Set email_verified=true
+  → User can now log in
+```
+
+**SSO Users:** Automatically verified (`email_verified=true` on creation)
+
 ---
 
 ## 10. Frontend Architecture
@@ -346,9 +440,28 @@ Adding/updating/deleting experience entries triggers `recalculateYearsOfExperien
 4. All API calls attach access token via `api-client.ts`
 5. On 401 → automatic token refresh and retry
 
+### SSO Flow
+
+1. User clicks SSO button → redirected to OAuth provider
+2. After authorization → redirected to `/sso/callback` with tokens
+3. Tokens stored, user redirected to dashboard (existing) or profile with tour (new)
+
+### Onboarding Tour
+
+- Powered by Driver.js
+- Triggered on first login (`last_login_at` is null)
+- Highlights: Resume upload → Profile edit → Job matches
+- Dismissed state stored in localStorage
+
+### Notification System
+
+- Novu integration for real-time in-app notifications
+- `NotificationBell` component in navbar shows unread count
+- Dedicated notification pages for nurse and admin roles
+
 ### Key Data Flows
 
-**Registration:** Basic Info → Professional Status → Resume Upload → Consent → Dashboard
+**Registration:** Basic Info → Email Verification → Profile Setup → Dashboard
 
 **Job Application:** View job → Apply (`POST /applications/jobs/:jobId/apply`) → Confirmation
 
@@ -358,9 +471,10 @@ Adding/updating/deleting experience entries triggers `recalculateYearsOfExperien
 
 | Group | Routes |
 |-------|--------|
-| Public | `/`, `/login`, `/register`, `/forgot-password`, `/reset-password` |
-| Nurse | `/dashboard`, `/jobs`, `/jobs/[id]`, `/profile`, `/settings` |
-| Admin | `/admin`, `/admin/jobs`, `/admin/nurses`, `/admin/nurses/[id]`, `/admin/nurses/[id]/matches` |
+| Public | `/`, `/login`, `/register`, `/forgot-password`, `/reset-password`, `/verify-email` |
+| SSO | `/sso/callback` |
+| Nurse | `/dashboard`, `/jobs`, `/jobs/[id]`, `/profile`, `/settings`, `/notifications` |
+| Admin | `/admin`, `/admin/jobs`, `/admin/nurses`, `/admin/nurses/[id]`, `/admin/nurses/[id]/matches`, `/admin/notifications` |
 
 ---
 
@@ -371,15 +485,25 @@ Adding/updating/deleting experience entries triggers `recalculateYearsOfExperien
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `PORT` | No | `4000` | Server port |
+| `NODE_ENV` | No | `development` | Environment |
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | — | Supabase project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Yes | — | Supabase service role key |
 | `NEXTAUTH_SECRET` | Yes | — | JWT signing secret |
 | `JWT_ACCESS_EXPIRY` | No | `24h` | Access token lifespan |
 | `JWT_REFRESH_EXPIRY` | No | `7d` | Refresh token lifespan |
 | `CORS_ORIGIN` | No | `http://localhost:3000` | Allowed CORS origin |
+| `FRONTEND_URL` | No | `http://localhost:3000` | Frontend URL for redirects |
 | `RESEND_API_KEY` | No | — | Email service |
-| `GOOGLE_AI_API_KEY` | No | — | Gemini AI |
+| `RESEND_FROM_EMAIL` | No | `onboarding@resend.dev` | Sender email |
+| `GOOGLE_AI_API_KEY` | No | — | Gemini AI for resume parsing |
+| `OPENAI_API_KEY` | No | — | OpenAI for job matching |
 | `NOVU_API_KEY` | No | — | Push notifications |
+| `GOOGLE_CLIENT_ID` | No | — | Google OAuth |
+| `GOOGLE_CLIENT_SECRET` | No | — | Google OAuth |
+| `LINKEDIN_CLIENT_ID` | No | — | LinkedIn OAuth |
+| `LINKEDIN_CLIENT_SECRET` | No | — | LinkedIn OAuth |
+| `FACEBOOK_CLIENT_ID` | No | — | Facebook OAuth |
+| `FACEBOOK_CLIENT_SECRET` | No | — | Facebook OAuth |
 
 ### Frontend (`.env.local`)
 
@@ -389,6 +513,9 @@ Adding/updating/deleting experience entries triggers `recalculateYearsOfExperien
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
 | `NEXTAUTH_SECRET` | Yes | JWT signing secret (shared with backend) |
+| `NEXT_PUBLIC_NOVU_APPLICATION_IDENTIFIER` | No | Novu app ID for notifications |
+| `NEXT_PUBLIC_NOVU_BACKEND_URL` | No | Novu backend URL (self-hosted) |
+| `NEXT_PUBLIC_NOVU_SOCKET_URL` | No | Novu socket URL (self-hosted) |
 
 ---
 
@@ -413,3 +540,60 @@ npm start            # Production start
 curl http://localhost:4000/health
 curl http://localhost:3000
 ```
+
+---
+
+## 13. Database Migrations
+
+Migrations are stored in `frontend/supabase/migrations/`:
+
+| File | Description |
+|------|-------------|
+| `001_initial_schema.sql` | Core tables (users, profiles, jobs, etc.) |
+| `002_seed_jobs.sql` | Initial job listings |
+| `003_add_education_details.sql` | Education enhancements |
+| `003_password_reset_tokens.sql` | Password reset functionality |
+| `003_registration_update.sql` | Registration flow updates |
+| `004_add_profile_picture.sql` | Profile picture storage |
+| `005_add_job_applications.sql` | Job application system |
+| `006_seed_more_jobs.sql` | Additional job listings |
+| `007_add_experience_type.sql` | Experience type field |
+| `008_add_embedding_cache.sql` | AI embedding cache |
+| `009_sso_providers.sql` | SSO provider links table |
+| `010_email_verification.sql` | Email verification system |
+| `011_last_login_at.sql` | First login tracking |
+
+---
+
+## 14. Recent Updates
+
+### Added Features
+
+1. **Single Sign-On (SSO)**
+   - Google, LinkedIn, Facebook authentication
+   - Account linking for existing users
+   - SSO-only accounts (no password required)
+
+2. **Email Verification**
+   - Required for manual sign-ups
+   - 24-hour token expiry
+   - Resend verification option
+
+3. **AI-Powered Job Matching**
+   - OpenAI embeddings for semantic similarity
+   - Embedding cache for cost optimization
+   - Proficiency-based skill matching
+
+4. **Onboarding Tour**
+   - Driver.js powered first-login experience
+   - Highlights key features
+   - Dismissible with localStorage persistence
+
+5. **Notification System**
+   - Novu integration for real-time notifications
+   - In-app notification bell
+   - Dedicated notification pages
+
+6. **First Login Detection**
+   - `last_login_at` field tracks new users
+   - Triggers onboarding tour for new accounts
