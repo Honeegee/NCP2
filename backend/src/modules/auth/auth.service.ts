@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import jwt from "jsonwebtoken";
+import jwt, { SignOptions } from "jsonwebtoken";
 import { env } from "../../config/env";
 import { createServerSupabase } from "../../shared/database";
 import {
@@ -29,11 +29,11 @@ interface TokenPair {
 }
 
 export function signAccessToken(payload: { id: string; email: string; role: string }): string {
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_ACCESS_EXPIRY });
+  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_ACCESS_EXPIRY } as SignOptions);
 }
 
 export function signRefreshToken(payload: { id: string }): string {
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_REFRESH_EXPIRY });
+  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_REFRESH_EXPIRY } as SignOptions);
 }
 
 export async function login(email: string, password: string): Promise<TokenPair> {

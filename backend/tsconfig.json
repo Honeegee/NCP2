@@ -5,7 +5,7 @@
     "moduleResolution": "node",
     "lib": ["ES2022"],
     "outDir": "./dist",
-    "rootDir": ".",
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,14 +14,14 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "baseUrl": ".",
+    "baseUrl": "./src",
     "paths": {
-      "@shared/*": ["src/shared/*"],
-      "@modules/*": ["src/modules/*"],
-      "@middleware/*": ["src/middleware/*"],
-      "@config/*": ["src/config/*"]
+      "@shared/*": ["shared/*"],
+      "@modules/*": ["modules/*"],
+      "@middleware/*": ["middleware/*"],
+      "@config/*": ["config/*"]
     }
   },
-  "include": ["src/**/*", "api/**/*"],
+  "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]
 }
