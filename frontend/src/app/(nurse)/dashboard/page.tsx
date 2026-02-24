@@ -23,6 +23,7 @@ import {
   CheckCircle2,
   AlertCircle,
 } from "lucide-react";
+import { HeroBackground } from "@/components/shared/HeroBackground";
 import Link from "next/link";
 import type { NurseFullProfile, JobMatch } from "@/types";
 
@@ -72,95 +73,87 @@ export default function NurseDashboard() {
 
   return (
     <div>
-      {/* Dashboard Header - Full Width Edge-to-Edge (Same as Profile) */}
-      <div className="profile-header">
-        {/* Subtle Decorative Elements */}
-        <div className="profile-header-bg">
-          <div className="absolute -top-40 -right-40 w-80 h-80 bg-sky-200/30 rounded-full blur-3xl"></div>
-          <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-blue-200/30 rounded-full blur-3xl"></div>
-        </div>
-
-        <div className="profile-header-container">
-          <div className="flex flex-col sm:flex-row items-start gap-6">
-            {/* Welcome Section */}
+      {/* ── Hero Header ── */}
+      <HeroBackground style={{ paddingBottom: "4rem" }} showWave>
+        {/* Content */}
+        <div className="admin-hero-container">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-4">
             <div className="flex-1">
-              <div className="flex items-start justify-between gap-4 flex-wrap">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-4">
-                    <div className="h-8 w-8 rounded-lg bg-sky-100 flex items-center justify-center">
-                      <Sparkles className="h-4 w-4 text-sky-600" />
-                    </div>
-                    <span className="text-sm text-white/90 font-medium">
-                      {new Date().toLocaleDateString("en-US", {
-                        weekday: "long",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </span>
-                  </div>
-                  
-                  <h1 className="text-4xl font-bold text-white mb-3">
-                    Welcome back, {profile?.first_name || "Nurse"}!
-                  </h1>
-                  {profile?.bio ? (
-                    <p className="text-gray-900 text-base leading-relaxed line-clamp-4 max-w-3xl">
-                      {profile.bio}
-                    </p>
-                  ) : (
-                    <p className="text-gray-700 text-base italic">
-                      Complete your profile to start getting matched with great opportunities.
-                    </p>
-                  )}
+              <div className="flex items-center gap-2.5 mb-1">
+                <div className="p-2 rounded-xl bg-white/10 backdrop-blur-sm">
+                  <Sparkles className="h-5 w-5 text-white" />
                 </div>
+                <span className="text-sm text-white/60 font-medium">
+                  {new Date().toLocaleDateString("en-US", {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </span>
+              </div>
 
-                {/* CTA Buttons */}
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <Button
-                    asChild
-                    className="btn-primary-green hidden sm:inline-flex"
-                  >
-                    <Link href="/jobs">
-                      <Briefcase className="h-4 w-4 mr-2" />
-                      Browse Jobs
-                    </Link>
-                  </Button>
-                  <Button
-                    asChild
-                    className="profile-btn-outline hidden sm:inline-flex"
-                  >
-                    <Link href="/profile">
-                      <User className="h-4 w-4 mr-2" />
-                      Edit Profile
-                    </Link>
-                  </Button>
-                  
-                  {/* Mobile icon buttons */}
-                  <div className="flex sm:hidden gap-2">
-                    <Button
-                      asChild
-                      size="icon"
-                      className="h-10 w-10 gradient-primary border-0 text-white rounded-lg shadow-md"
-                    >
-                      <Link href="/jobs">
-                        <Briefcase className="h-5 w-5" />
-                      </Link>
-                    </Button>
-                    <Button
-                      asChild
-                      size="icon"
-                      className="h-10 w-10 bg-white text-primary border border-primary rounded-lg shadow-sm"
-                    >
-                      <Link href="/profile">
-                        <User className="h-5 w-5" />
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
+              <h1 className="text-3xl md:text-4xl font-bold text-white mb-2 ml-11">
+                Welcome back, {profile?.first_name || "Nurse"}!
+              </h1>
+              {profile?.bio ? (
+                <p className="text-white/60 text-sm leading-relaxed line-clamp-2 max-w-3xl ml-11">
+                  {profile.bio}
+                </p>
+              ) : (
+                <p className="text-white/50 text-sm italic ml-11">
+                  Complete your profile to start getting matched with great opportunities.
+                </p>
+              )}
+            </div>
+
+            {/* CTA Buttons */}
+            <div className="flex items-center gap-2 sm:ml-auto flex-wrap">
+              <Button
+                asChild
+                size="sm"
+                className="btn-primary-green hidden sm:inline-flex"
+              >
+                <Link href="/jobs">
+                  <Briefcase className="h-4 w-4 mr-1.5" />
+                  Browse Jobs
+                </Link>
+              </Button>
+              <Button
+                asChild
+                size="sm"
+                className="admin-hero-btn-ghost hidden sm:inline-flex"
+              >
+                <Link href="/profile">
+                  <User className="h-4 w-4 mr-1.5" />
+                  Edit Profile
+                </Link>
+              </Button>
+
+              {/* Mobile icon buttons */}
+              <div className="flex sm:hidden gap-2">
+                <Button
+                  asChild
+                  size="icon"
+                  className="h-10 w-10 admin-hero-btn-cta rounded-lg"
+                >
+                  <Link href="/jobs">
+                    <Briefcase className="h-5 w-5" />
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  size="icon"
+                  className="h-10 w-10 admin-hero-btn-ghost rounded-lg"
+                >
+                  <Link href="/profile">
+                    <User className="h-5 w-5" />
+                  </Link>
+                </Button>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      </HeroBackground>
 
       {/* Stats Cards - Overlapping Header (Same as Profile) */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 -mt-12 relative z-10">

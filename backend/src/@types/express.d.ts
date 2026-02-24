@@ -3,7 +3,7 @@ declare namespace Express {
     user?: {
       id: string;
       email: string;
-      role: "nurse" | "admin";
+      role: "nurse" | "admin" | "superadmin";
     };
     pagination?: {
       page: number;

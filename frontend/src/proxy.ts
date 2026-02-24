@@ -37,7 +37,7 @@ export async function proxy(request: NextRequest) {
   ) {
     // Redirect authenticated users away from auth pages
     if (user && (pathname === "/login" || pathname === "/register")) {
-      if (user.role === "admin") {
+      if (user.role === "admin" || user.role === "superadmin") {
         return NextResponse.redirect(new URL("/admin", request.url));
       }
       return NextResponse.redirect(new URL("/dashboard", request.url));
@@ -54,7 +54,7 @@ export async function proxy(request: NextRequest) {
 
   // Admin routes - require admin role
   if (pathname.startsWith("/admin")) {
-    if (user.role !== "admin") {
+    if (user.role !== "admin" && user.role !== "superadmin") {
       return NextResponse.redirect(new URL("/dashboard", request.url));
     }
   }

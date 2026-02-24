@@ -1,5 +1,5 @@
 import { createServerSupabase } from "../../shared/database";
-import { NotFoundError, ConflictError, BadRequestError, ForbiddenError } from "../../shared/errors";
+import { NotFoundError, ConflictError, BadRequestError, ForbiddenError, DatabaseError } from "../../shared/errors";
 import { ApplicationsRepository } from "./applications.repository";
 
 function getRepo() {
@@ -9,7 +9,7 @@ function getRepo() {
 export async function listMyApplications(userId: string, offset: number, limit: number) {
   const repo = getRepo();
   const { data, error, count } = await repo.findByNurseUserId(userId, offset, limit);
-  if (error) throw new Error(error.message);
+  if (error) throw new DatabaseError(error.message, error);
   return { data: data || [], total: count || 0 };
 }
 
@@ -20,7 +20,7 @@ export async function listAllApplications(
 ) {
   const repo = getRepo();
   const { data, error, count } = await repo.findAll(filters, offset, limit);
-  if (error) throw new Error(error.message);
+  if (error) throw new DatabaseError(error.message, error);
 
   // Fetch nurse profiles separately (no direct FK from job_applications to nurse_profiles)
   const nurseUserIds = [...new Set((data || []).map((a: { nurse_user_id: string }) => a.nurse_user_id))];
@@ -40,7 +40,7 @@ export async function getApplication(id: string, userId: string, userRole: strin
   const { data, error } = await repo.findById(id);
   if (error || !data) throw new NotFoundError("Application not found");
 
-  if (userRole !== "admin" && data.nurse_user_id !== userId) {
+  if (userRole !== "admin" && userRole !== "superadmin" && data.nurse_user_id !== userId) {
     throw new ForbiddenError();
   }
   return data;
@@ -61,7 +61,7 @@ export async function applyToJob(userId: string, jobId: string) {
   const { data, error } = await repo.create(userId, jobId);
   if (error) {
     if (error.code === "23505") throw new ConflictError("Already applied to this job");
-    throw new Error(error.message);
+    throw new DatabaseError(error.message, error);
   }
   return data;
 }
@@ -72,6 +72,37 @@ export async function updateApplicationStatus(id: string, status: string) {
   if (fetchErr || !existing) throw new NotFoundError("Application not found");
 
   const { data, error } = await repo.updateStatus(id, status);
-  if (error) throw new Error(error.message);
+  if (error) throw new DatabaseError(error.message, error);
   return data;
+}
+
+// --- Stats ---
+
+export async function getApplicationStats() {
+  const supabase = createServerSupabase();
+
+  // Run counts in parallel for efficiency
+  const [
+    { count: totalCount, error: totalError },
+    { count: pendingCount, error: pendingError },
+    { count: acceptedCount, error: acceptedError },
+    { count: rejectedCount, error: rejectedError }
+  ] = await Promise.all([
+    supabase.from("job_applications").select("*", { count: "exact", head: true }),
+    supabase.from("job_applications").select("*", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.from("job_applications").select("*", { count: "exact", head: true }).eq("status", "accepted"),
+    supabase.from("job_applications").select("*", { count: "exact", head: true }).eq("status", "rejected"),
+  ]);
+
+  if (totalError) throw new DatabaseError(totalError.message, totalError);
+  if (pendingError) throw new DatabaseError(pendingError.message, pendingError);
+  if (acceptedError) throw new DatabaseError(acceptedError.message, acceptedError);
+  if (rejectedError) throw new DatabaseError(rejectedError.message, rejectedError);
+
+  return {
+    totalApplications: totalCount || 0,
+    pending: pendingCount || 0,
+    accepted: acceptedCount || 0,
+    rejected: rejectedCount || 0,
+  };
 }

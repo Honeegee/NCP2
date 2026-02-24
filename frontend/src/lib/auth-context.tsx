@@ -8,10 +8,11 @@ import { api, setTokens, clearTokens, getAccessToken } from "./api-client";
 export interface AuthUser {
   id: string;
   email: string;
-  role: "nurse" | "admin";
+  role: "nurse" | "admin" | "superadmin";
   firstName?: string;
   lastName?: string;
   profilePictureUrl?: string;
+  created_at?: string;
 }
 
 interface AuthContextType {
@@ -54,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         id: payload.id,
         email: payload.email,
         role: payload.role,
+        created_at: payload.created_at,
       });
       setStatus("authenticated");
 
@@ -66,22 +68,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   async function fetchProfile(userId: string, role: string) {
-    if (role !== "nurse") return;
     try {
-      const profile = await api.get<{
-        first_name: string;
-        last_name: string;
-        profile_picture_url: string | null;
-      }>("/nurses/me");
+      let profile;
+      if (role === "nurse") {
+        profile = await api.get<{
+          first_name: string;
+          last_name: string;
+          profile_picture_url: string | null;
+        }>("/nurses/me");
+      } else if (role === "admin" || role === "superadmin") {
+        profile = await api.get<{
+          first_name: string;
+          last_name: string;
+          profile_picture_url: string | null;
+        }>("/users/me/profile");
+      } else {
+        return;
+      }
+
+      if (!profile) return;
 
       setUser((prev) =>
         prev
           ? {
-              ...prev,
-              firstName: profile.first_name,
-              lastName: profile.last_name,
-              profilePictureUrl: profile.profile_picture_url || undefined,
-            }
+            ...prev,
+            firstName: profile.first_name,
+            lastName: profile.last_name,
+            profilePictureUrl: profile.profile_picture_url || undefined,
+          }
           : prev
       );
     } catch {
@@ -101,16 +115,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser({
       id: result.user.id,
       email: result.user.email,
-      role: result.user.role as "nurse" | "admin",
+      role: result.user.role as "nurse" | "admin" | "superadmin",
       firstName: result.user.firstName,
       lastName: result.user.lastName,
     });
     setStatus("authenticated");
 
     // Fetch profile picture in background
-    if (result.user.role === "nurse") {
-      fetchProfile(result.user.id, result.user.role);
-    }
+    fetchProfile(result.user.id, result.user.role);
 
     return { role: result.user.role, isNewUser: !!result.isNewUser };
   }, []);

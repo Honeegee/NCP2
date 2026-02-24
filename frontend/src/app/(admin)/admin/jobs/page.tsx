@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { Suspense, useEffect, useState, useMemo } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api-client";
@@ -22,7 +23,13 @@ import {
   DollarSign,
   Upload,
   Sparkles,
+  X,
+  Filter,
+  Globe,
+  ChevronDown,
 } from "lucide-react";
+import { HeroBackground } from "@/components/shared/HeroBackground";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { JobSidebar } from "@/components/jobs/JobSidebar";
 import { JobDetailPanel } from "@/components/jobs/JobDetailPanel";
 import { JobFormDialog } from "@/components/jobs/JobFormDialog";
@@ -31,13 +38,17 @@ import { ApplicationsTab } from "@/components/jobs/ApplicationsTab";
 import { fetchPaginated } from "@/lib/api-client";
 import type { Job, JobMatch, JobApplicationWithDetails } from "@/types";
 import { cn } from "@/lib/utils";
+import { Country, City } from "country-state-city";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 function isNewJob(createdAt: string): boolean {
   return Date.now() - new Date(createdAt).getTime() < SEVEN_DAYS_MS;
 }
 
-export default function AdminJobManagement() {
+function AdminJobManagementContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"jobs" | "applications">("jobs");
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -46,43 +57,69 @@ export default function AdminJobManagement() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Job filters
   const [search, setSearch] = useState("");
   const [locationFilter, setLocationFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [countryFilter, setCountryFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
 
-  // Application filters
   const [appStatusFilter, setAppStatusFilter] = useState<"all" | "pending" | "reviewed" | "accepted" | "rejected">("all");
   const [appSearchName, setAppSearchName] = useState("");
   const [appJobFilter, setAppJobFilter] = useState("");
 
-  // Pagination
   const [page, setPage] = useState(1);
-  const ITEMS_PER_PAGE = 12;
+  const [totalCount, setTotalCount] = useState(0);
+  const [jobStats, setJobStats] = useState<{ totalJobs: number; activeJobs: number; inactiveJobs: number } | null>(null);
+  const ITEMS_PER_PAGE = 20;
 
-  // Dialogs
   const [formDialogOpen, setFormDialogOpen] = useState(false);
   const [editingJob, setEditingJob] = useState<Job | null>(null);
   const [bulkUploadOpen, setBulkUploadOpen] = useState(false);
 
-  // Application counts per job
   const [appCounts, setAppCounts] = useState<Record<string, number>>({});
-
-  // Mobile detail view
   const [showMobileDetail, setShowMobileDetail] = useState(false);
 
   const fetchJobs = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await api.get<Job[]>("/jobs?include_inactive=true");
-      setJobs(data || []);
+      
+      // Build query params for server-side filtering
+      const params = new URLSearchParams({
+        page: String(page),
+        limit: String(ITEMS_PER_PAGE),
+      });
+      
+      // Add status filter for server-side filtering
+      if (statusFilter === "active") {
+        params.set("is_active", "true");
+      } else if (statusFilter === "inactive") {
+        params.set("is_active", "false");
+      } else {
+        // "all" - include both active and inactive
+        params.set("include_inactive", "true");
+      }
+      
+      const response = await fetchPaginated<Job>(`/jobs?${params.toString()}`);
+      
+      setJobs(response.data || []);
+      setTotalCount(response.meta?.total || 0);
     } catch (err) {
       console.error("Jobs fetch error:", err);
       setError(err instanceof Error ? err.message : "Failed to load jobs");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchJobStats = async () => {
+    try {
+      const stats = await api.get<{ totalJobs: number; activeJobs: number; inactiveJobs: number }>("/jobs/stats");
+      console.log("Job stats fetched:", stats);
+      setJobStats(stats);
+    } catch (err) {
+      console.error("Failed to fetch job stats:", err);
     }
   };
 
@@ -100,16 +137,40 @@ export default function AdminJobManagement() {
   };
 
   useEffect(() => {
+    if (searchParams.get("new") === "true") {
+      setFormDialogOpen(true);
+      router.replace("/admin/jobs");
+    }
+    if (searchParams.get("tab") === "applications") {
+      setActiveTab("applications");
+    }
+  }, [searchParams, router]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setPage(1);
+  }, [search, locationFilter, typeFilter, statusFilter, countryFilter, dateFilter]);
+
+  // Fetch stats only once on initial load
+  useEffect(() => {
     if (user) {
-      fetchJobs();
+      fetchJobStats();
       fetchAppCounts();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // Fetch jobs when page or statusFilter changes
+  useEffect(() => {
+    if (user) {
+      fetchJobs();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, page, statusFilter]);
 
   const sidebarItems: JobMatch[] = useMemo(() => {
     let filtered = jobs;
-    if (statusFilter === "active") filtered = filtered.filter((j) => j.is_active);
-    if (statusFilter === "inactive") filtered = filtered.filter((j) => !j.is_active);
+    // Status filtering is now done server-side, no need to filter here
     if (search) {
       const s = search.toLowerCase();
       filtered = filtered.filter(
@@ -127,11 +188,26 @@ export default function AdminJobManagement() {
     if (typeFilter) {
       filtered = filtered.filter((j) => j.employment_type === typeFilter);
     }
-
-    filtered.sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
-
+    if (countryFilter) {
+      filtered = filtered.filter((j) =>
+        (j.country && j.country.toLowerCase() === countryFilter.toLowerCase()) ||
+        (j.location && j.location.toLowerCase().includes(countryFilter.toLowerCase()))
+      );
+    }
+    if (dateFilter) {
+      const now = Date.now();
+      const msMap: Record<string, number> = {
+        "24h": 24 * 60 * 60 * 1000,
+        "7d": 7 * 24 * 60 * 60 * 1000,
+        "14d": 14 * 24 * 60 * 60 * 1000,
+        "30d": 30 * 24 * 60 * 60 * 1000,
+      };
+      const cutoff = msMap[dateFilter];
+      if (cutoff) {
+        filtered = filtered.filter((j) => now - new Date(j.created_at).getTime() < cutoff);
+      }
+    }
+    filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     return filtered.map((job) => ({
       job,
       match_score: 0,
@@ -139,21 +215,16 @@ export default function AdminJobManagement() {
       matched_skills: [],
       experience_match: false,
     }));
-  }, [jobs, search, locationFilter, typeFilter, statusFilter]);
+  }, [jobs, search, locationFilter, typeFilter, statusFilter, countryFilter, dateFilter]);
 
-  useEffect(() => { setPage(1); }, [search, locationFilter, typeFilter, statusFilter]);
-
-  const totalPages = Math.max(1, Math.ceil(sidebarItems.length / ITEMS_PER_PAGE));
-  const paginatedItems = sidebarItems.slice(
-    (page - 1) * ITEMS_PER_PAGE,
-    page * ITEMS_PER_PAGE
-  );
+  const totalPages = Math.max(1, Math.ceil(totalCount / ITEMS_PER_PAGE));
+  const paginatedItems = sidebarItems;
 
   useEffect(() => {
-    if (
-      paginatedItems.length > 0 &&
-      !paginatedItems.find((m) => m.job.id === selectedJobId)
-    ) {
+
+
+    
+    if (paginatedItems.length > 0 && !paginatedItems.find((m) => m.job.id === selectedJobId)) {
       setSelectedJobId(paginatedItems[0].job.id);
     }
   }, [paginatedItems, selectedJobId]);
@@ -173,14 +244,10 @@ export default function AdminJobManagement() {
     try {
       if (job.is_active) {
         await api.delete(`/jobs/${job.id}`);
-        toast.success("Job deactivated", {
-          description: `"${job.title}" is no longer visible to nurses.`,
-        });
+        toast.success("Job deactivated", { description: `"${job.title}" is no longer visible to nurses.` });
       } else {
         await api.put(`/jobs/${job.id}`, { is_active: true });
-        toast.success("Job reactivated", {
-          description: `"${job.title}" is now active.`,
-        });
+        toast.success("Job reactivated", { description: `"${job.title}" is now active.` });
       }
       await fetchJobs();
     } catch (err) {
@@ -197,9 +264,7 @@ export default function AdminJobManagement() {
     setActionLoading(true);
     try {
       await api.delete(`/jobs/${job.id}/permanent`);
-      toast.success("Job deleted", {
-        description: `"${job.title}" has been permanently removed.`,
-      });
+      toast.success("Job deleted", { description: `"${job.title}" has been permanently removed.` });
       setSelectedJobId(null);
       await fetchJobs();
     } catch (err) {
@@ -214,20 +279,35 @@ export default function AdminJobManagement() {
   const handleFormSuccess = () => { fetchJobs(); fetchAppCounts(); };
   const handleMobileSelect = (id: string) => { setSelectedJobId(id); setShowMobileDetail(true); };
   const clearFilters = () => {
-    setSearch("");
-    setLocationFilter("");
-    setTypeFilter("");
-    setStatusFilter("all");
+    setSearch(""); setLocationFilter(""); setTypeFilter("");
+    setStatusFilter("all"); setCountryFilter(""); setDateFilter("");
   };
 
-  // Derived stats
-  const totalJobs = jobs.length;
-  const activeJobs = jobs.filter((j) => j.is_active).length;
-  const inactiveJobs = jobs.filter((j) => !j.is_active).length;
-  const locations = [...new Set(jobs.map((j) => j.location))];
+  // Use stats from API (accurate total counts), fallback to totalCount for total only
+  const totalJobs = jobStats?.totalJobs ?? totalCount;
+  const activeJobs = jobStats?.activeJobs ?? 0;
+  const inactiveJobs = jobStats?.inactiveJobs ?? 0;
   const types = [...new Set(jobs.map((j) => j.employment_type))];
+  const allCountriesData = Country.getAllCountries();
+  const allCountries = allCountriesData.map((c) => c.name);
+  const selectedCountryCode = allCountriesData.find((c) => c.name === countryFilter)?.isoCode ?? "";
+  const jobLocationsForCountry = countryFilter
+    ? [...new Set(jobs.filter((j) => j.country === countryFilter).map((j) => j.location))]
+    : [...new Set(jobs.map((j) => j.location))];
+  const libraryCities = selectedCountryCode
+    ? (City.getCitiesOfCountry(selectedCountryCode)?.map((c) => c.name) ?? [])
+    : [];
+  const locations = [...new Set([...jobLocationsForCountry, ...libraryCities])].sort();
+  const dateOptions = [
+    { value: "", label: "Any time" },
+    { value: "24h", label: "Last 24 hours" },
+    { value: "7d", label: "Last 7 days" },
+    { value: "14d", label: "Last 14 days" },
+    { value: "30d", label: "Last 30 days" },
+  ];
+  const dateFilterLabel = dateOptions.find((o) => o.value === dateFilter)?.label ?? "Any time";
   const hasActiveFilters =
-    search !== "" || locationFilter !== "" || typeFilter !== "" || statusFilter !== "all";
+    search !== "" || locationFilter !== "" || typeFilter !== "" || statusFilter !== "all" || countryFilter !== "" || dateFilter !== "";
 
   if (loading) {
     return (
@@ -255,35 +335,83 @@ export default function AdminJobManagement() {
   return (
     <div className="space-y-5 animate-fade-in pb-16">
 
-      {/* ── Page Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">Job Management</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Manage jobs and applications</p>
-        </div>
-        <div className="flex items-center gap-2 sm:ml-auto flex-wrap">
-          <Link href="/admin">
-            <Button variant="outline" size="sm">Back to Dashboard</Button>
-          </Link>
-          {activeTab === "jobs" && (
-            <>
-              <Button size="sm" variant="outline" onClick={() => setBulkUploadOpen(true)}>
-                <Upload className="h-4 w-4 mr-1.5" />
-                Bulk Upload
-              </Button>
-              <Button size="sm" className="btn-primary-green border-0" onClick={handleCreate}>
-                <Plus className="h-4 w-4 mr-1.5" />
-                Create New Job
-              </Button>
-            </>
-          )}
-        </div>
-      </div>
+      {/* ── Hero ── */}
+      <HeroBackground showExtraCircles>
+        <div className="admin-hero-container">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-3 mb-5">
+            <div>
+              <div className="flex items-center gap-2.5 mb-1">
+                <div className="p-2 rounded-xl bg-white/10 backdrop-blur-sm">
+                  <Briefcase className="h-5 w-5 text-white" />
+                </div>
+                <h1 className="text-2xl md:text-3xl font-bold text-white">Job Management</h1>
+              </div>
+              <p className="text-sm text-white/60 ml-11">Manage your nursing job postings and applications</p>
+            </div>
 
-      {/* ── Single-row: Tabs + Filters ── */}
-      <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 sm:ml-auto flex-wrap">
+              <Button asChild size="sm" className="admin-hero-btn-ghost">
+                <Link href="/admin">Back to Dashboard</Link>
+              </Button>
 
-        {/* Tab switcher */}
+              {activeTab === "jobs" && (
+                <>
+                  <Button size="sm" className="admin-hero-btn-ghost" onClick={() => setBulkUploadOpen(true)}>
+                    <Upload className="h-4 w-4 mr-1.5" />
+                    Bulk Upload
+                  </Button>
+                  <Button size="sm" className="btn-primary-green" onClick={handleCreate}>
+                    <Plus className="h-4 w-4 mr-1.5" />
+                    Create New Job
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Search Bar */}
+          <div className="admin-hero-search space-y-3 md:space-y-0 md:flex md:items-center md:gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Search by title, facility, or description..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-10 bg-white border-0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+              />
+              {search && (
+                <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex w-full md:w-auto rounded-md overflow-visible bg-white shadow-sm">
+              <SearchableSelect
+                value={countryFilter}
+                onChange={(val) => { setCountryFilter(val); setLocationFilter(""); }}
+                options={allCountries}
+                placeholder="All Countries"
+                searchPlaceholder="Search countries..."
+                icon={<Globe className="h-4 w-4" />}
+                className="md:w-48 rounded-r-none border-r border-border/30"
+              />
+              <SearchableSelect
+                value={locationFilter}
+                onChange={setLocationFilter}
+                options={locations}
+                placeholder="All Locations"
+                searchPlaceholder="Search cities..."
+                icon={<MapPin className="h-4 w-4" />}
+                className="md:w-48 rounded-l-none"
+              />
+            </div>
+          </div>
+        </div>
+      </HeroBackground>
+
+      {/* ── Tab Switcher + Filters Row ── */}
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex gap-1 p-1 bg-muted rounded-xl flex-shrink-0">
           {(["jobs", "applications"] as const).map((tab) => (
             <button
@@ -308,83 +436,8 @@ export default function AdminJobManagement() {
           ))}
         </div>
 
-        {/* Everything after the tabs is pushed to the right */}
-        <div className="flex flex-wrap items-center gap-2 ml-auto">
-
-        {/* Status pills — jobs tab only */}
-        {activeTab === "jobs" && (
-          <div className="flex gap-1 p-1 bg-muted rounded-xl flex-shrink-0">
-            {(["all", "active", "inactive"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                  statusFilter === s
-                    ? "bg-white text-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {s === "all"
-                  ? `All (${totalJobs})`
-                  : s === "active"
-                  ? `Active (${activeJobs})`
-                  : `Inactive (${inactiveJobs})`}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Search — jobs tab only */}
-        {activeTab === "jobs" && (
-          <div className="relative flex-shrink-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-            <Input
-              placeholder="Search jobs..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 w-48"
-            />
-            {search && (
-              <button
-                onClick={() => setSearch("")}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-              >
-              </button>
-            )}
-          </div>
-        )}
-
-        {/* Location + Type dropdowns — jobs tab only */}
-        {activeTab === "jobs" && (
-          <>
-            <Select
-              value={locationFilter}
-              onChange={(e) => setLocationFilter(e.target.value)}
-              className="h-9 w-40 flex-shrink-0"
-            >
-              <SelectOption value="">All Locations</SelectOption>
-              {locations.map((loc) => (
-                <SelectOption key={loc} value={loc}>{loc}</SelectOption>
-              ))}
-            </Select>
-
-            <Select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="h-9 w-36 flex-shrink-0"
-            >
-              <SelectOption value="">All Types</SelectOption>
-              {types.map((type) => (
-                <SelectOption key={type} value={type}>{type}</SelectOption>
-              ))}
-            </Select>
-          </>
-        )}
-
-        {/* Application filters — applications tab only */}
         {activeTab === "applications" && (
-          <>
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
             <Select
               value={appStatusFilter}
               onChange={(e) => setAppStatusFilter(e.target.value as typeof appStatusFilter)}
@@ -396,17 +449,6 @@ export default function AdminJobManagement() {
               <SelectOption value="accepted">Accepted</SelectOption>
               <SelectOption value="rejected">Rejected</SelectOption>
             </Select>
-
-            <div className="relative flex-shrink-0">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-              <Input
-                placeholder="Search nurse name..."
-                value={appSearchName}
-                onChange={(e) => setAppSearchName(e.target.value)}
-                className="pl-9 h-9 w-48"
-              />
-            </div>
-
             <Select
               value={appJobFilter}
               onChange={(e) => setAppJobFilter(e.target.value)}
@@ -417,11 +459,138 @@ export default function AdminJobManagement() {
                 <SelectOption key={job.id} value={job.id}>{job.title}</SelectOption>
               ))}
             </Select>
-          </>
+          </div>
         )}
 
-        </div> {/* end right-side wrapper */}
+        {activeTab === "jobs" && (
+          <div className="flex flex-wrap items-center gap-2 ml-auto">
+            <div className="flex gap-1 p-1 bg-muted rounded-xl flex-shrink-0">
+              {(["all", "active", "inactive"] as const).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setStatusFilter(s)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                    statusFilter === s
+                      ? "bg-white text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground"
+                  )}
+                >
+                  {s === "all" ? `All (${totalJobs})` : s === "active" ? `Active (${activeJobs})` : `Inactive (${inactiveJobs})`}
+                </button>
+              ))}
+            </div>
+
+            <div className="h-6 w-px bg-border hidden sm:block" />
+
+            {types.map((type) => (
+              <button
+                key={type}
+                onClick={() => setTypeFilter(typeFilter === type ? "" : type)}
+                className={cn(
+                  "px-3 py-1.5 rounded-full text-sm font-medium border transition-all capitalize",
+                  typeFilter === type
+                    ? "bg-primary/10 text-primary border-primary/30"
+                    : "bg-background text-muted-foreground border-border hover:border-primary/30 hover:text-foreground"
+                )}
+              >
+                {type.replace("-", " ")}
+              </button>
+            ))}
+
+            <div className="h-6 w-px bg-border hidden sm:block" />
+
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-sm font-medium border transition-all flex items-center gap-1.5",
+                    dateFilter
+                      ? "bg-primary/10 text-primary border-primary/30"
+                      : "bg-background text-muted-foreground border-border hover:border-primary/30 hover:text-foreground"
+                  )}
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                  {dateFilter ? dateFilterLabel : "Date Posted"}
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 p-2" align="start">
+                {dateOptions.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setDateFilter(opt.value)}
+                    className={cn(
+                      "w-full text-left px-3 py-2 rounded-md text-sm transition-colors",
+                      dateFilter === opt.value
+                        ? "bg-primary/10 text-primary font-medium"
+                        : "hover:bg-muted text-foreground"
+                    )}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </PopoverContent>
+            </Popover>
+
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary px-2 py-1.5 rounded-md hover:bg-muted transition-colors"
+              >
+                <X className="h-3 w-3" />
+                Clear all
+              </button>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* ── Active Filter Badges ── */}
+      {activeTab === "jobs" && hasActiveFilters && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Filter className="h-3 w-3" />
+            Active:
+          </span>
+          {search && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              Search: &ldquo;{search}&rdquo;
+              <button onClick={() => setSearch("")} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {countryFilter && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              Country: {countryFilter}
+              <button onClick={() => setCountryFilter("")} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {locationFilter && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              Location: {locationFilter}
+              <button onClick={() => setLocationFilter("")} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {typeFilter && (
+            <Badge variant="secondary" className="text-xs gap-1 capitalize">
+              Type: {typeFilter.replace("-", " ")}
+              <button onClick={() => setTypeFilter("")} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {statusFilter !== "all" && (
+            <Badge variant="secondary" className="text-xs gap-1 capitalize">
+              Status: {statusFilter}
+              <button onClick={() => setStatusFilter("all")} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+          {dateFilter && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              Posted: {dateFilterLabel}
+              <button onClick={() => setDateFilter("")} className="ml-0.5 hover:text-destructive"><X className="h-3 w-3" /></button>
+            </Badge>
+          )}
+        </div>
+      )}
 
       {/* ── Tab Content ── */}
       {activeTab === "applications" ? (
@@ -434,15 +603,9 @@ export default function AdminJobManagement() {
         <>
           {/* Desktop: Sidebar + Detail */}
           <div className="hidden md:flex gap-4">
-
-            {/* Sidebar column */}
             <div className="w-[340px] flex-shrink-0 space-y-3">
               {sidebarItems.length === 0 ? (
-                <EmptyState
-                  hasJobs={jobs.length > 0}
-                  onClear={clearFilters}
-                  onCreate={handleCreate}
-                />
+                <EmptyState hasJobs={jobs.length > 0} onClear={clearFilters} onCreate={handleCreate} />
               ) : (
                 <JobSidebar
                   items={paginatedItems}
@@ -453,7 +616,6 @@ export default function AdminJobManagement() {
                   showStatusBadge
                 />
               )}
-
               {totalPages > 1 && (
                 <div className="flex items-center justify-between px-1 pt-1">
                   <button
@@ -464,9 +626,7 @@ export default function AdminJobManagement() {
                     <ChevronLeft className="h-4 w-4" />
                     Prev
                   </button>
-                  <span className="text-xs text-muted-foreground">
-                    Page {page} of {totalPages}
-                  </span>
+                  <span className="text-xs text-muted-foreground">Page {page} of {totalPages}</span>
                   <button
                     onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages}
@@ -479,7 +639,6 @@ export default function AdminJobManagement() {
               )}
             </div>
 
-            {/* Detail column — sticky child sticks within flex stretch */}
             <div className="flex-1 min-w-0">
               {sidebarItems.length === 0 ? (
                 <Card className="border shadow-sm">
@@ -498,15 +657,8 @@ export default function AdminJobManagement() {
                   onToggleActive={handleToggleActive}
                   onDelete={handleDelete}
                   actionLoading={actionLoading}
-                  applicationCount={
-                    selectedJobMatch
-                      ? appCounts[selectedJobMatch.job.id] ?? 0
-                      : undefined
-                  }
-                  onViewApplicants={(jobId) => {
-                    setAppJobFilter(jobId);
-                    setActiveTab("applications");
-                  }}
+                  applicationCount={selectedJobMatch ? appCounts[selectedJobMatch.job.id] ?? 0 : undefined}
+                  onViewApplicants={(jobId) => { setAppJobFilter(jobId); setActiveTab("applications"); }}
                 />
               )}
             </div>
@@ -534,18 +686,11 @@ export default function AdminJobManagement() {
                   onDelete={handleDelete}
                   actionLoading={actionLoading}
                   applicationCount={appCounts[selectedJobMatch.job.id] ?? 0}
-                  onViewApplicants={(jobId) => {
-                    setAppJobFilter(jobId);
-                    setActiveTab("applications");
-                  }}
+                  onViewApplicants={(jobId) => { setAppJobFilter(jobId); setActiveTab("applications"); }}
                 />
               </>
             ) : sidebarItems.length === 0 ? (
-              <EmptyState
-                hasJobs={jobs.length > 0}
-                onClear={clearFilters}
-                onCreate={handleCreate}
-              />
+              <EmptyState hasJobs={jobs.length > 0} onClear={clearFilters} onCreate={handleCreate} />
             ) : (
               sidebarItems.map((match) => (
                 <Card
@@ -560,20 +705,13 @@ export default function AdminJobManagement() {
                           <h3 className="text-sm font-semibold group-hover:text-primary transition-colors">
                             {match.job.title}
                           </h3>
-                          <span
-                            className={cn(
-                              "inline-flex items-center gap-1 text-[10px] font-medium rounded-full px-1.5 py-0.5 border",
-                              match.job.is_active
-                                ? "bg-green-50 text-green-700 border-green-200"
-                                : "bg-gray-100 text-gray-500 border-gray-200"
-                            )}
-                          >
-                            <span
-                              className={cn(
-                                "h-1.5 w-1.5 rounded-full",
-                                match.job.is_active ? "bg-green-500" : "bg-gray-400"
-                              )}
-                            />
+                          <span className={cn(
+                            "inline-flex items-center gap-1 text-[10px] font-medium rounded-full px-1.5 py-0.5 border",
+                            match.job.is_active
+                              ? "bg-green-50 text-green-700 border-green-200"
+                              : "bg-gray-100 text-gray-500 border-gray-200"
+                          )}>
+                            <span className={cn("h-1.5 w-1.5 rounded-full", match.job.is_active ? "bg-green-500" : "bg-gray-400")} />
                             {match.job.is_active ? "Active" : "Inactive"}
                           </span>
                           {isNewJob(match.job.created_at) && (
@@ -584,25 +722,15 @@ export default function AdminJobManagement() {
                           )}
                         </div>
                         <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <Building className="h-3 w-3" />
-                            {match.job.facility_name}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            {match.job.location}
-                          </span>
-                          <span className="flex items-center gap-1 capitalize">
-                            <Clock className="h-3 w-3" />
-                            {match.job.employment_type}
-                          </span>
+                          <span className="flex items-center gap-1"><Building className="h-3 w-3" />{match.job.facility_name}</span>
+                          <span className="flex items-center gap-1"><MapPin className="h-3 w-3" />{match.job.location}</span>
+                          <span className="flex items-center gap-1 capitalize"><Clock className="h-3 w-3" />{match.job.employment_type}</span>
                           {match.job.salary_min && (
                             <span className="flex items-center gap-1">
                               <DollarSign className="h-3 w-3" />
                               {match.job.salary_currency}{" "}
                               {match.job.salary_min.toLocaleString()}
-                              {match.job.salary_max &&
-                                `–${match.job.salary_max.toLocaleString()}`}
+                              {match.job.salary_max && `–${match.job.salary_max.toLocaleString()}`}
                             </span>
                           )}
                         </div>
@@ -633,11 +761,7 @@ export default function AdminJobManagement() {
 }
 
 /* ── Empty state ── */
-function EmptyState({
-  hasJobs,
-  onClear,
-  onCreate,
-}: {
+function EmptyState({ hasJobs, onClear, onCreate }: {
   hasJobs: boolean;
   onClear: () => void;
   onCreate: () => void;
@@ -652,21 +776,40 @@ function EmptyState({
           {hasJobs ? "No jobs match your filters" : "No jobs posted yet"}
         </p>
         <p className="text-xs text-muted-foreground mb-4">
-          {hasJobs
-            ? "Try adjusting your search or filters."
-            : "Create your first job posting to get started."}
+          {hasJobs ? "Try adjusting your search or filters." : "Create your first job posting to get started."}
         </p>
         {hasJobs ? (
           <Button variant="outline" size="sm" onClick={onClear}>
             Clear filters
           </Button>
         ) : (
-          <Button size="sm" className="btn-primary-green border-0" onClick={onCreate}>
+          <Button size="sm" className="btn-primary-green" onClick={onCreate}>
             <Plus className="h-4 w-4 mr-1.5" />
             Create Job
           </Button>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/* ── Loading fallback ── */
+function JobsLoadingFallback() {
+  return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="text-center">
+        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full mx-auto mb-4" />
+        <p className="text-muted-foreground text-sm">Loading jobs...</p>
+      </div>
+    </div>
+  );
+}
+
+/* ── Main export with Suspense boundary ── */
+export default function AdminJobManagement() {
+  return (
+    <Suspense fallback={<JobsLoadingFallback />}>
+      <AdminJobManagementContent />
+    </Suspense>
   );
 }

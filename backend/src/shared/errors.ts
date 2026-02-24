@@ -53,3 +53,20 @@ export class TooManyRequestsError extends AppError {
     super(message, 429, "TOO_MANY_REQUESTS", { retryAfter });
   }
 }
+
+export class DatabaseError extends AppError {
+  constructor(message = "Database error", details?: unknown) {
+    super(message, 500, "DATABASE_ERROR", details);
+  }
+}
+export class ConfigurationError extends AppError {
+  constructor(message = "Service configuration missing", details?: unknown) {
+    super(message, 500, "CONFIGURATION_ERROR", details);
+  }
+}
+
+export class ExternalServiceError extends AppError {
+  constructor(message = "External service error", details?: unknown) {
+    super(message, 502, "EXTERNAL_SERVICE_ERROR", details);
+  }
+}

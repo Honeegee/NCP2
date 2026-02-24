@@ -20,12 +20,15 @@ import {
   X,
   Filter,
 } from "lucide-react";
+import { HeroBackground } from "@/components/shared/HeroBackground";
 import Link from "next/link";
 import { JobSidebar } from "@/components/jobs/JobSidebar";
 import { JobDetailPanel } from "@/components/jobs/JobDetailPanel";
 import { MatchScoreCircle } from "@/components/jobs/MatchScoreCircle";
 import type { Job, JobMatch, JobApplication } from "@/types";
 import { toast } from "sonner";
+import { Country, City } from "country-state-city";
+import { SearchableSelect } from "@/components/ui/searchable-select";
 
 export default function JobsPage() {
   const { user } = useAuth();
@@ -37,7 +40,7 @@ export default function JobsPage() {
   const [loading, setLoading] = useState(true);
   const [applyLoading, setApplyLoading] = useState(false);
   const [page, setPage] = useState(1);
-  const ITEMS_PER_PAGE = 8;
+  const ITEMS_PER_PAGE = 20;
 
   // Enhanced filters
   const [search, setSearch] = useState("");
@@ -52,6 +55,18 @@ export default function JobsPage() {
     const types = [...new Set(allJobs.map((j) => j.employment_type).filter(Boolean))].sort();
     return { countries, types };
   }, [allJobs]);
+
+  // Country-state-city linked data
+  const allCountriesData = Country.getAllCountries();
+  const allCountries = allCountriesData.map((c) => c.name);
+  const selectedCountryCode = allCountriesData.find((c) => c.name === countryFilter)?.isoCode ?? "";
+  const jobLocationsForCountry = countryFilter && countryFilter !== "all"
+    ? [...new Set(allJobs.filter((j) => j.country && j.country.toLowerCase() === countryFilter.toLowerCase()).map((j) => j.location).filter(Boolean))]
+    : [...new Set(allJobs.map((j) => j.location).filter(Boolean))];
+  const libraryCities = selectedCountryCode
+    ? (City.getCitiesOfCountry(selectedCountryCode)?.map((c) => c.name) ?? [])
+    : [];
+  const linkedLocations = [...new Set([...jobLocationsForCountry, ...libraryCities])].sort();
 
   useEffect(() => {
     async function fetchData() {
@@ -126,14 +141,17 @@ export default function JobsPage() {
 
     // Country filter (specific country or all)
     if (countryFilter && countryFilter !== "all") {
-      items = items.filter((m) => m.job.country === countryFilter);
+      items = items.filter((m) =>
+        (m.job.country && m.job.country.toLowerCase() === countryFilter.toLowerCase()) ||
+        (m.job.location && m.job.location.toLowerCase().includes(countryFilter.toLowerCase()))
+      );
     }
 
-    // Location/city text search
+    // Location/city filter
     if (locationSearch) {
       const loc = locationSearch.toLowerCase();
       items = items.filter((m) =>
-        m.job.location.toLowerCase().includes(loc)
+        m.job.location && m.job.location.toLowerCase().includes(loc)
       );
     }
 
@@ -230,185 +248,194 @@ export default function JobsPage() {
   const filteredCount = sidebarItems.length;
 
   return (
-    <div className="space-y-4 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Job Opportunities</h1>
-          <p className="text-sm text-muted-foreground">
-            {viewMode === "matched"
-              ? `${matches.length} matched to your profile`
-              : viewMode === "applied"
-                ? `${appliedJobIds.size} applied`
-                : `${allJobs.length} available`}
-            {hasActiveFilters && filteredCount !== totalCount && (
-              <span className="ml-2 text-primary">
-                ({filteredCount} matching filters)
-              </span>
-            )}
-          </p>
+    <div className="space-y-5 animate-fade-in">
+      {/* ── Hero Header ── */}
+      <HeroBackground showWave>
+        {/* Content */}
+        <div className="admin-hero-container">
+          {/* Top row: Title + Stats */}
+          <div className="flex flex-col sm:flex-row sm:items-start gap-3 mb-5">
+            <div>
+              <div className="flex items-center gap-2.5 mb-1">
+                <div className="p-2 rounded-xl bg-white/10 backdrop-blur-sm">
+                  <Briefcase className="h-5 w-5 text-white" />
+                </div>
+                <h1 className="text-2xl md:text-3xl font-bold text-white">Job Opportunities</h1>
+              </div>
+              <p className="text-sm text-white/60 ml-11">
+                {viewMode === "matched"
+                  ? `${matches.length} jobs matched to your profile`
+                  : viewMode === "applied"
+                    ? `${appliedJobIds.size} jobs applied`
+                    : `${allJobs.length} jobs available`}
+                {hasActiveFilters && filteredCount !== totalCount && (
+                  <span className="ml-2 text-white/80">
+                    ({filteredCount} matching filters)
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Search Bar */}
+          <div className="admin-hero-search space-y-3 md:space-y-0 md:flex md:items-center md:gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="Search by title, facility, or description..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-10 bg-white border-0 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Connected Country + Location group */}
+            <div className="flex w-full md:w-auto rounded-md overflow-visible bg-white shadow-sm">
+              <SearchableSelect
+                value={countryFilter === "all" ? "" : countryFilter}
+                onChange={(val) => { setCountryFilter(val || "all"); setLocationSearch(""); }}
+                options={allCountries}
+                placeholder="All Countries"
+                searchPlaceholder="Search countries..."
+                icon={<Globe className="h-4 w-4" />}
+                className="md:w-48 rounded-r-none border-r border-border/30"
+              />
+              <SearchableSelect
+                value={locationSearch}
+                onChange={setLocationSearch}
+                options={linkedLocations}
+                placeholder="All Locations"
+                searchPlaceholder="Search cities..."
+                icon={<MapPin className="h-4 w-4" />}
+                className="md:w-48 rounded-l-none"
+              />
+            </div>
+          </div>
         </div>
-      </div>
+      </HeroBackground>
 
-      {/* Filters row */}
-      <div className="space-y-3">
-        {/* Primary filters row */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* View Mode: Matched | All | Applied */}
-          <div className="flex bg-muted rounded-lg p-0.5">
-            {([
-              { key: "matched" as const, label: `Matched (${matches.length})` },
-              { key: "all" as const, label: `All Jobs (${allJobs.length})` },
-              { key: "applied" as const, label: `Applied (${appliedJobIds.size})` },
-            ]).map(({ key, label }) => (
-              <button
-                key={key}
-                onClick={() => {
-                  setViewMode(key);
-                  setSelectedJobId(null);
-                }}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  viewMode === key
-                    ? "bg-background shadow-sm text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {/* Search */}
-          <div className="relative ml-auto">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search jobs..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9 w-48"
-            />
-          </div>
-        </div>
-
-        {/* Secondary filters row */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Country Filter */}
-          <Select
-            value={countryFilter}
-            onChange={(e) => setCountryFilter(e.target.value)}
-            className="h-9 w-40"
-          >
-            <SelectOption value="all">
-              <span className="flex items-center gap-1.5">
-                <Globe className="h-3.5 w-3.5" />
-                All Countries
-              </span>
-            </SelectOption>
-            {filterOptions.countries.map((country) => (
-              <SelectOption key={country} value={country}>{country}</SelectOption>
-            ))}
-          </Select>
-
-          {/* Location/City Search */}
-          <div className="relative">
-            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              placeholder="City/Location..."
-              value={locationSearch}
-              onChange={(e) => setLocationSearch(e.target.value)}
-              className="pl-8 h-9 w-36"
-            />
-          </div>
-
-          {/* Employment Type Filter */}
-          <Select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="h-9 w-32"
-          >
-            <SelectOption value="">All Types</SelectOption>
-            {filterOptions.types.map((type) => (
-              <SelectOption key={type} value={type}>
-                {type.charAt(0).toUpperCase() + type.slice(1).replace("-", " ")}
-              </SelectOption>
-            ))}
-          </Select>
-
-          {/* Experience Level Filter */}
-          <Select
-            value={expFilter}
-            onChange={(e) => setExpFilter(e.target.value)}
-            className="h-9 w-36"
-          >
-            <SelectOption value="">Any Experience</SelectOption>
-            <SelectOption value="1">Entry (0-1 yrs)</SelectOption>
-            <SelectOption value="3">Mid (2-3 yrs)</SelectOption>
-            <SelectOption value="5">Senior (4-5 yrs)</SelectOption>
-            <SelectOption value="100">Expert (5+ yrs)</SelectOption>
-          </Select>
-
-          {/* Clear Filters */}
-          {hasActiveFilters && (
+      {/* ── View Mode Tabs + Filters Row ── */}
+      <div className="flex flex-wrap items-center gap-3">
+        {/* View Mode: Matched | All | Applied */}
+        <div className="flex gap-1 p-1 bg-muted rounded-xl flex-shrink-0">
+          {([
+            { key: "matched" as const, label: `Matched (${matches.length})` },
+            { key: "all" as const, label: `All Jobs (${allJobs.length})` },
+            { key: "applied" as const, label: `Applied (${appliedJobIds.size})` },
+          ]).map(({ key, label }) => (
             <button
-              onClick={clearFilters}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary px-2 py-1.5 rounded-md hover:bg-muted transition-colors"
+              key={key}
+              onClick={() => {
+                setViewMode(key);
+                setSelectedJobId(null);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                viewMode === key
+                  ? "bg-background shadow-sm text-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
             >
-              <X className="h-3 w-3" />
-              Clear all
+              {label}
             </button>
-          )}
+          ))}
         </div>
 
-        {/* Active filters display */}
+        {/* Employment Type Filter */}
+        <Select
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          className="h-9 w-32"
+        >
+          <SelectOption value="">All Types</SelectOption>
+          {filterOptions.types.map((type) => (
+            <SelectOption key={type} value={type}>
+              {type.charAt(0).toUpperCase() + type.slice(1).replace("-", " ")}
+            </SelectOption>
+          ))}
+        </Select>
+
+        {/* Experience Level Filter */}
+        <Select
+          value={expFilter}
+          onChange={(e) => setExpFilter(e.target.value)}
+          className="h-9 w-36"
+        >
+          <SelectOption value="">Any Experience</SelectOption>
+          <SelectOption value="1">Entry (0-1 yrs)</SelectOption>
+          <SelectOption value="3">Mid (2-3 yrs)</SelectOption>
+          <SelectOption value="5">Senior (4-5 yrs)</SelectOption>
+          <SelectOption value="100">Expert (5+ yrs)</SelectOption>
+        </Select>
+
+        {/* Clear Filters */}
         {hasActiveFilters && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-muted-foreground flex items-center gap-1">
-              <Filter className="h-3 w-3" />
-              Active:
-            </span>
-            {search && (
-              <Badge variant="secondary" className="text-xs gap-1">
-                Search: &quot;{search}&quot;
-                <button onClick={() => setSearch("")} className="ml-0.5 hover:text-destructive">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
-            {countryFilter !== "all" && (
-              <Badge variant="secondary" className="text-xs gap-1">
-                Country: {countryFilter}
-                <button onClick={() => setCountryFilter("all")} className="ml-0.5 hover:text-destructive">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
-            {locationSearch && (
-              <Badge variant="secondary" className="text-xs gap-1">
-                Location: {locationSearch}
-                <button onClick={() => setLocationSearch("")} className="ml-0.5 hover:text-destructive">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
-            {typeFilter && (
-              <Badge variant="secondary" className="text-xs gap-1">
-                Type: {typeFilter}
-                <button onClick={() => setTypeFilter("")} className="ml-0.5 hover:text-destructive">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
-            {expFilter && (
-              <Badge variant="secondary" className="text-xs gap-1">
-                Exp: ≤{expFilter} yrs
-                <button onClick={() => setExpFilter("")} className="ml-0.5 hover:text-destructive">
-                  <X className="h-3 w-3" />
-                </button>
-              </Badge>
-            )}
-          </div>
+          <button
+            onClick={clearFilters}
+            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary px-2 py-1.5 rounded-md hover:bg-muted transition-colors ml-auto"
+          >
+            <X className="h-3 w-3" />
+            Clear all
+          </button>
         )}
       </div>
+
+      {/* Active filters display */}
+      {hasActiveFilters && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-xs text-muted-foreground flex items-center gap-1">
+            <Filter className="h-3 w-3" />
+            Active:
+          </span>
+          {search && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              Search: &quot;{search}&quot;
+              <button onClick={() => setSearch("")} className="ml-0.5 hover:text-destructive">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {countryFilter !== "all" && countryFilter && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              Country: {countryFilter}
+              <button onClick={() => setCountryFilter("all")} className="ml-0.5 hover:text-destructive">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {locationSearch && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              Location: {locationSearch}
+              <button onClick={() => setLocationSearch("")} className="ml-0.5 hover:text-destructive">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {typeFilter && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              Type: {typeFilter}
+              <button onClick={() => setTypeFilter("")} className="ml-0.5 hover:text-destructive">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+          {expFilter && (
+            <Badge variant="secondary" className="text-xs gap-1">
+              Exp: &le;{expFilter} yrs
+              <button onClick={() => setExpFilter("")} className="ml-0.5 hover:text-destructive">
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          )}
+        </div>
+      )}
 
       {/* Desktop: Sidebar + Detail Panel */}
       <div className="hidden md:flex gap-4">

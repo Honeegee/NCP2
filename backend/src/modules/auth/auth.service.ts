@@ -19,16 +19,17 @@ import {
   NotFoundError,
   ConflictError,
   TooManyRequestsError,
+  DatabaseError,
 } from "../../shared/errors";
 
 interface TokenPair {
   accessToken: string;
   refreshToken: string;
-  user: { id: string; email: string; role: string; firstName?: string; lastName?: string };
+  user: { id: string; email: string; role: string; firstName?: string; lastName?: string; profilePictureUrl?: string; created_at?: string };
   isNewUser?: boolean;
 }
 
-export function signAccessToken(payload: { id: string; email: string; role: string }): string {
+export function signAccessToken(payload: { id: string; email: string; role: string; created_at?: string }): string {
   return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_ACCESS_EXPIRY } as SignOptions);
 }
 
@@ -51,7 +52,7 @@ export async function login(email: string, password: string): Promise<TokenPair>
   const supabase = createServerSupabase();
   const { data: user, error } = await supabase
     .from("users")
-    .select("id, email, password_hash, role, email_verified, last_login_at")
+    .select("id, email, password_hash, role, email_verified, last_login_at, created_at")
     .eq("email", cleanEmail)
     .single();
 
@@ -87,17 +88,29 @@ export async function login(email: string, password: string): Promise<TokenPair>
     );
   }
 
-  // Get nurse profile for name
+  // Get profile for name
   let firstName: string | undefined;
   let lastName: string | undefined;
+  let profilePictureUrl: string | undefined;
+
   if (user.role === "nurse") {
     const { data: profile } = await supabase
       .from("nurse_profiles")
-      .select("first_name, last_name")
+      .select("first_name, last_name, profile_picture_url")
       .eq("user_id", user.id)
       .single();
     firstName = profile?.first_name;
     lastName = profile?.last_name;
+    profilePictureUrl = profile?.profile_picture_url;
+  } else if (user.role === "admin" || user.role === "superadmin") {
+    const { data: profile } = await supabase
+      .from("admin_profiles")
+      .select("first_name, last_name, profile_picture_url")
+      .eq("user_id", user.id)
+      .single();
+    firstName = profile?.first_name;
+    lastName = profile?.last_name;
+    profilePictureUrl = profile?.profile_picture_url;
   }
 
   // Identify Novu subscriber
@@ -113,7 +126,7 @@ export async function login(email: string, password: string): Promise<TokenPair>
         await novu.topics.addSubscribers("nurses", { subscribers: [user.id] });
       }
     } catch (err) {
-      console.error("Novu subscriber identify failed:", err);
+      // Silent fail for non-critical service
     }
   }
 
@@ -125,13 +138,13 @@ export async function login(email: string, password: string): Promise<TokenPair>
     .update({ last_login_at: new Date().toISOString() })
     .eq("id", user.id);
 
-  const accessToken = signAccessToken({ id: user.id, email: user.email, role: user.role });
+  const accessToken = signAccessToken({ id: user.id, email: user.email, role: user.role, created_at: user.created_at });
   const refreshToken = signRefreshToken({ id: user.id });
 
   return {
     accessToken,
     refreshToken,
-    user: { id: user.id, email: user.email, role: user.role, firstName, lastName },
+    user: { id: user.id, email: user.email, role: user.role, firstName, lastName, profilePictureUrl, created_at: user.created_at },
     isNewUser,
   };
 }
@@ -185,38 +198,18 @@ export async function register(data: {
 
   const password_hash = await bcrypt.hash(data.password, 12);
 
-  // Create user with email_verified = false
-  const { data: user, error: userError } = await supabase
-    .from("users")
-    .insert({ email: cleanEmail, password_hash, role: "nurse", email_verified: false })
-    .select("id")
-    .single();
+  // Create user and empty nurse profile atomically via RPC
+  const { data: userId, error: rpcError } = await supabase.rpc("register_nurse", {
+    email_param: cleanEmail,
+    password_hash_param: password_hash
+  });
 
-  if (userError || !user) {
-    throw new Error("Failed to create account");
-  }
-
-  // Create empty nurse profile — user fills in details on their profile page
-  const { error: profileError } = await supabase
-    .from("nurse_profiles")
-    .insert({
-      user_id: user.id,
-      first_name: "",
-      last_name: "",
-      phone: "",
-      country: "Philippines",
-      years_of_experience: 0,
-      profile_complete: false,
-    });
-
-  if (profileError) {
-    console.error("Profile creation error:", profileError);
-    await supabase.from("users").delete().eq("id", user.id);
-    throw new Error("Failed to create profile");
+  if (rpcError || !userId) {
+    throw new DatabaseError("Failed to create account", rpcError);
   }
 
   // Send verification email
-  await sendVerificationEmail(user.id, cleanEmail, "");
+  await sendVerificationEmail(userId, cleanEmail, "");
 
   return { message: "Account created. Please check your email to verify your account." };
 }
@@ -243,7 +236,7 @@ export async function sendVerificationEmail(userId: string, email: string, first
       expires_at: expiresAt.toISOString(),
     });
 
-  if (tokenError) throw new Error("Failed to create verification token");
+  if (tokenError) throw new DatabaseError("Failed to create verification token", tokenError);
 
   const baseUrl = env.CORS_ORIGIN || "http://localhost:3000";
   const verifyUrl = `${baseUrl}/verify-email?token=${token}`;
@@ -297,7 +290,7 @@ export async function verifyEmail(token: string): Promise<{ message: string }> {
     .update({ email_verified: true })
     .eq("id", verificationToken.user_id);
 
-  if (updateError) throw new Error("Failed to verify email");
+  if (updateError) throw new DatabaseError("Failed to verify email", updateError);
 
   // Invalidate all tokens for this user
   await supabase
@@ -344,13 +337,13 @@ export async function refreshAccessToken(refreshTokenStr: string): Promise<{ acc
     const supabase = createServerSupabase();
     const { data: user, error } = await supabase
       .from("users")
-      .select("id, email, role")
+      .select("id, email, role, created_at")
       .eq("id", decoded.id)
       .single();
 
     if (error || !user) throw new UnauthorizedError("Invalid refresh token");
 
-    const accessToken = signAccessToken({ id: user.id, email: user.email, role: user.role });
+    const accessToken = signAccessToken({ id: user.id, email: user.email, role: user.role, created_at: user.created_at });
     const refreshToken = signRefreshToken({ id: user.id });
     return { accessToken, refreshToken };
   } catch {
@@ -393,7 +386,7 @@ export async function forgotPassword(email: string, frontendUrl?: string): Promi
       expires_at: expiresAt.toISOString(),
     });
 
-  if (tokenError) throw new Error("Failed to create reset token");
+  if (tokenError) throw new DatabaseError("Failed to create reset token", tokenError);
 
   const baseUrl = frontendUrl || env.CORS_ORIGIN || "http://localhost:3000";
   const resetUrl = `${baseUrl}/reset-password?token=${resetToken}`;
@@ -416,7 +409,7 @@ export async function forgotPassword(email: string, frontendUrl?: string): Promi
         text: getPasswordResetEmailText({ userName, resetUrl, expiryTime: "1 hour" }),
       });
     } catch (err) {
-      console.error("Error sending reset email:", err);
+      // Silent fail
     }
   }
 }
@@ -462,7 +455,7 @@ export async function resetPassword(token: string, newPassword: string): Promise
     .update({ password_hash: hashedPassword })
     .eq("id", resetToken.user_id);
 
-  if (updateError) throw new Error("Failed to update password");
+  if (updateError) throw new DatabaseError("Failed to update password", updateError);
 
   // Invalidate all tokens for this user
   await supabase
@@ -507,5 +500,5 @@ export async function changePassword(
     .update({ password_hash: hashedPassword })
     .eq("id", userId);
 
-  if (updateError) throw new Error("Failed to update password");
+  if (updateError) throw new DatabaseError("Failed to update password", updateError);
 }

@@ -5,9 +5,10 @@ import { matchJobs } from "../../shared/job-matcher";
 import { matchJobsWithAI } from "../../shared/ai-job-matcher";
 import { isAIMatchingAvailable } from "../../shared/openai-client";
 import { getNovu } from "../../shared/novu";
-import { NotFoundError, BadRequestError } from "../../shared/errors";
+import { logger } from "../../shared/logger";
+import { NotFoundError, BadRequestError, DatabaseError } from "../../shared/errors";
 import { JobsRepository } from "./jobs.repository";
-import type { NurseFullProfile, Job } from "../../shared/types";
+import type { NurseFullProfile, Job, JobCreateInput, JobUpdateInput } from "../../shared/types";
 import { TriggerRecipientsTypeEnum } from "@novu/node";
 
 function getRepo() {
@@ -15,13 +16,16 @@ function getRepo() {
 }
 
 export async function listJobs(
-  filters: { location?: string; employment_type?: string; country?: string; include_inactive?: boolean },
+  filters: { location?: string; employment_type?: string; country?: string; is_active?: boolean },
   offset: number,
   limit: number
 ) {
   const repo = getRepo();
   const { data, error, count } = await repo.findAll(filters, offset, limit);
-  if (error) throw new Error(error.message);
+  if (error) {
+    const errMsg = error instanceof Error ? error.message : 'Unknown database error';
+    throw new DatabaseError(errMsg, error);
+  }
   return { data: data || [], total: count || 0 };
 }
 
@@ -32,12 +36,14 @@ export async function getJob(id: string) {
   return data;
 }
 
-export async function createJob(jobData: Record<string, unknown>) {
+export async function createJob(jobData: JobCreateInput) {
   const repo = getRepo();
   const { data, error } = await repo.create(jobData);
-  if (error) throw new Error(error.message);
+  if (error) {
+    const errMsg = error instanceof Error ? error.message : 'Unknown database error';
+    throw new DatabaseError(errMsg, error);
+  }
 
-  // Notify all nurses via Novu
   const novu = getNovu();
   if (novu && data) {
     try {
@@ -51,21 +57,23 @@ export async function createJob(jobData: Record<string, unknown>) {
         },
       });
     } catch (err) {
-      console.error("Novu new-job-posted trigger failed:", err);
+      logger.error({ error: err instanceof Error ? err.message : err, jobId: data.id }, "Novu new-job-posted trigger failed");
     }
   }
 
   return data;
 }
 
-export async function updateJob(id: string, updates: Record<string, unknown>) {
+export async function updateJob(id: string, updates: JobUpdateInput) {
   const repo = getRepo();
-  // Verify exists
   const { data: existing, error: fetchErr } = await repo.findById(id);
   if (fetchErr || !existing) throw new NotFoundError("Job not found");
 
   const { data, error } = await repo.update(id, updates);
-  if (error) throw new Error(error.message);
+  if (error) {
+    const errMsg = error instanceof Error ? error.message : 'Unknown database error';
+    throw new DatabaseError(errMsg, error);
+  }
   return data;
 }
 
@@ -75,7 +83,10 @@ export async function deleteJob(id: string) {
   if (fetchErr || !existing) throw new NotFoundError("Job not found");
 
   const { data, error } = await repo.softDelete(id);
-  if (error) throw new Error(error.message);
+  if (error) {
+    const errMsg = error instanceof Error ? error.message : 'Unknown database error';
+    throw new DatabaseError(errMsg, error);
+  }
   return data;
 }
 
@@ -85,7 +96,10 @@ export async function permanentlyDeleteJob(id: string) {
   if (fetchErr || !existing) throw new NotFoundError("Job not found");
 
   const { error } = await repo.hardDelete(id);
-  if (error) throw new Error(error.message);
+  if (error) {
+    const errMsg = error instanceof Error ? error.message : 'Unknown database error';
+    throw new DatabaseError(errMsg, error);
+  }
   return { message: "Job permanently deleted" };
 }
 
@@ -112,13 +126,12 @@ export async function bulkCreateJobs(csvBuffer: Buffer) {
   }
 
   const errors: { row: number; message: string }[] = [];
-  const validJobs: Record<string, unknown>[] = [];
+  const validJobs: JobCreateInput[] = [];
 
   for (let i = 0; i < records.length; i++) {
     const row = records[i];
-    const rowNum = i + 2; // +2 for header row + 0-index
+    const rowNum = i + 2;
 
-    // Validate required fields
     if (!row.title?.trim()) {
       errors.push({ row: rowNum, message: "Missing required field: title" });
       continue;
@@ -136,7 +149,7 @@ export async function bulkCreateJobs(csvBuffer: Buffer) {
       continue;
     }
 
-    const employmentType = (row.employment_type || "full-time").trim().toLowerCase();
+    const employmentType = (row.employment_type || "full-time").trim().toLowerCase() as JobCreateInput["employment_type"];
     if (!VALID_EMPLOYMENT_TYPES.includes(employmentType)) {
       errors.push({ row: rowNum, message: `Invalid employment_type: "${row.employment_type}". Must be one of: ${VALID_EMPLOYMENT_TYPES.join(", ")}` });
       continue;
@@ -184,12 +197,35 @@ export async function bulkCreateJobs(csvBuffer: Buffer) {
     const repo = getRepo();
     const { data, error } = await repo.createMany(validJobs);
     if (error) {
-      throw new Error(`Database insert failed: ${error.message}`);
+      const errMsg = error instanceof Error ? error.message : 'Unknown database error';
+      throw new DatabaseError(`Database insert failed: ${errMsg}`, error);
     }
     created = data?.length || validJobs.length;
   }
 
   return { created, errors, total: records.length };
+}
+
+async function calculateJobMatches(profile: NurseFullProfile) {
+  const repo = getRepo();
+  const { data: jobs, error: jobsError } = await repo.findAllActive();
+  if (jobsError) throw new DatabaseError("Failed to fetch jobs", jobsError);
+
+  if (!jobs || jobs.length === 0) return [];
+
+  let matches;
+  if (isAIMatchingAvailable()) {
+    try {
+      matches = await matchJobsWithAI(profile, jobs as Job[]);
+    } catch (err) {
+      logger.warn({ error: err instanceof Error ? err.message : err }, "AI matching failed, falling back to rule-based");
+      matches = matchJobs(profile, jobs as Job[]);
+    }
+  } else {
+    matches = matchJobs(profile, jobs as Job[]);
+  }
+
+  return matches;
 }
 
 export async function getJobMatchesForNurse(nurseProfileId: string) {
@@ -201,25 +237,7 @@ export async function getJobMatchesForNurse(nurseProfileId: string) {
     throw new NotFoundError("Nurse profile not found.");
   }
 
-  const repo = new JobsRepository(supabase);
-  const { data: jobs, error: jobsError } = await repo.findAllActive();
-  if (jobsError) throw new Error("Failed to fetch jobs");
-
-  if (!jobs || jobs.length === 0) return [];
-
-  let matches;
-  if (isAIMatchingAvailable()) {
-    try {
-      matches = await matchJobsWithAI(profile as NurseFullProfile, jobs as Job[]);
-    } catch (err) {
-      console.warn("[JobMatching] AI matching failed, falling back to rule-based:", err);
-      matches = matchJobs(profile as NurseFullProfile, jobs as Job[]);
-    }
-  } else {
-    matches = matchJobs(profile as NurseFullProfile, jobs as Job[]);
-  }
-
-  return matches;
+  return calculateJobMatches(profile as NurseFullProfile);
 }
 
 export async function getJobMatches(userId: string) {
@@ -230,26 +248,8 @@ export async function getJobMatches(userId: string) {
     throw new NotFoundError("Nurse profile not found. Please complete your profile first.");
   }
 
-  const repo = new JobsRepository(supabase);
-  const { data: jobs, error: jobsError } = await repo.findAllActive();
-  if (jobsError) throw new Error("Failed to fetch jobs");
+  const matches = await calculateJobMatches(profile as NurseFullProfile);
 
-  if (!jobs || jobs.length === 0) return [];
-
-  let matches;
-  if (isAIMatchingAvailable()) {
-    try {
-      matches = await matchJobsWithAI(profile as NurseFullProfile, jobs as Job[]);
-      console.log("[JobMatching] Using AI-enhanced matching");
-    } catch (err) {
-      console.warn("[JobMatching] AI matching failed, falling back to rule-based:", err);
-      matches = matchJobs(profile as NurseFullProfile, jobs as Job[]);
-    }
-  } else {
-    matches = matchJobs(profile as NurseFullProfile, jobs as Job[]);
-  }
-
-  // Notify for top match if score >= 70
   const novu = getNovu();
   if (novu && matches.length > 0 && matches[0].match_score >= 70) {
     try {
@@ -263,9 +263,61 @@ export async function getJobMatches(userId: string) {
         },
       });
     } catch (err) {
-      console.error("Novu job-match-found trigger failed:", err);
+      logger.error({ error: err instanceof Error ? err.message : err, userId }, "Novu job-match-found trigger failed");
     }
   }
 
   return matches;
+}
+
+export async function getJobStats() {
+  const supabase = createServerSupabase();
+
+  // Run counts in parallel
+  const [
+    { count: totalJobs, error: totalError },
+    { count: activeJobs, error: activeError },
+    { data: jobsWithCounts, error: jobsError }
+  ] = await Promise.all([
+    supabase.from("jobs").select("*", { count: "exact", head: true }),
+    supabase.from("jobs").select("*", { count: "exact", head: true }).eq("is_active", true),
+    supabase.from("jobs")
+      .select(`
+        id, 
+        title, 
+        is_active,
+        job_applications(count)
+      `)
+      .order("created_at", { ascending: false })
+  ]);
+
+  if (totalError) throw new DatabaseError(totalError.message, totalError);
+  if (activeError) throw new DatabaseError(activeError.message, activeError);
+  if (jobsError) throw new DatabaseError(jobsError.message, jobsError);
+
+  // Map and sort for top 5
+  // Note: job_applications is returned as an array or object depending on PostgREST version
+  const processedJobs = (jobsWithCounts || []).map((job: any) => {
+    // PostgREST returns count in various formats; handle both
+    const appCount = Array.isArray(job.job_applications)
+      ? (job.job_applications[0]?.count || 0)
+      : (job.job_applications?.count || 0);
+
+    return {
+      id: job.id,
+      title: job.title,
+      is_active: job.is_active,
+      application_count: appCount,
+    };
+  });
+
+  processedJobs.sort((a, b) => b.application_count - a.application_count);
+  const top5Jobs = processedJobs.slice(0, 5);
+
+  return {
+    totalJobs: totalJobs || 0,
+    activeJobs: activeJobs || 0,
+    inactiveJobs: (totalJobs || 0) - (activeJobs || 0),
+    topJobsByApplications: top5Jobs,
+  };
 }

@@ -67,3 +67,5 @@ export const loginRateLimit = rateLimit("login", { windowMs: 15 * 60 * 1000, max
 export const forgotPasswordRateLimit = rateLimit("forgot-password", { windowMs: 15 * 60 * 1000, maxAttempts: 3 });
 export const resetPasswordRateLimit = rateLimit("reset-password", { windowMs: 15 * 60 * 1000, maxAttempts: 5 });
 export const changePasswordRateLimit = rateLimit("change-password", { windowMs: 15 * 60 * 1000, maxAttempts: 5 });
+export const generalRateLimit = rateLimit("general", { windowMs: 15 * 60 * 1000, maxAttempts: 100 });
+export const apiRateLimit = rateLimit("api", { windowMs: 15 * 60 * 1000, maxAttempts: 50 });

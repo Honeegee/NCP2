@@ -1,5 +1,5 @@
 import { createServerSupabase } from "../../shared/database";
-import { NotFoundError, ForbiddenError, BadRequestError } from "../../shared/errors";
+import { NotFoundError, ForbiddenError, BadRequestError, DatabaseError } from "../../shared/errors";
 import { ResumesRepository } from "./resumes.repository";
 
 // Dynamic imports for CJS packages
@@ -54,7 +54,7 @@ export async function uploadResume(userId: string, file: Express.Multer.File) {
 
   // Upload to storage
   const { error: uploadError } = await repo.uploadFile(fileName, file.buffer, file.mimetype);
-  if (uploadError) throw new Error("Failed to upload file to storage");
+  if (uploadError) throw new DatabaseError("Failed to upload file to storage", uploadError);
 
   // Extract text
   let extractedText = "";
@@ -117,7 +117,7 @@ export async function uploadResume(userId: string, file: Express.Multer.File) {
     extracted_text: extractedText || null,
     parsed_data: parsedData,
   });
-  if (dbError) throw new Error("Failed to save resume record");
+  if (dbError) throw new DatabaseError("Failed to save resume record", dbError);
 
   // Insert parsed structured data
   if (parsedData) {
@@ -226,12 +226,12 @@ export async function getResumeUrl(resumeId: string, userId: string, userRole: s
   if (error || !resume) throw new NotFoundError("Resume not found");
 
   const nurse = resume.nurse as unknown as { user_id: string };
-  if (userRole !== "admin" && nurse.user_id !== userId) {
+  if (userRole !== "admin" && userRole !== "superadmin" && nurse.user_id !== userId) {
     throw new ForbiddenError();
   }
 
   const { data: signedData, error: signError } = await repo.createSignedUrl(resume.file_path, 3600);
-  if (signError || !signedData) throw new Error("Failed to generate download URL");
+  if (signError || !signedData) throw new DatabaseError("Failed to generate download URL", signError);
 
   return {
     url: signedData.signedUrl,
@@ -250,5 +250,5 @@ export async function deleteResume(resumeId: string, userId: string) {
 
   await repo.removeFiles([resume.file_path]);
   const { error: deleteError } = await repo.deleteById(resumeId);
-  if (deleteError) throw new Error("Failed to delete resume");
+  if (deleteError) throw new DatabaseError("Failed to delete resume", deleteError);
 }

@@ -22,6 +22,50 @@ import * as ssoController from "./sso.controller";
 
 const router = Router();
 
+/**
+ * @openapi
+ * /api/v1/auth/login:
+ *   post:
+ *     tags:
+ *       - Auth
+ *     summary: Authenticate user and get tokens
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     accessToken:
+ *                       type: string
+ *                     refreshToken:
+ *                       type: string
+ *                     user:
+ *                       type: object
+ *       401:
+ *         description: Invalid credentials
+ *       403:
+ *         description: Account unverified or locked
+ */
 router.post("/login", loginRateLimit, validate(loginSchema), controller.loginHandler);
 router.post("/check-email", validate(checkEmailSchema), controller.checkEmailHandler);
 router.post("/register", validate(registerSchema), controller.registerHandler);

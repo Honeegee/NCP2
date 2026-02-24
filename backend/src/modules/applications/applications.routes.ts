@@ -3,18 +3,20 @@ import { authenticate } from "../../middleware/auth";
 import { requireRole } from "../../middleware/roles";
 import { validate } from "../../middleware/validate";
 import { paginate } from "../../middleware/pagination";
+import { generalRateLimit } from "../../middleware/rate-limit";
 import { applicationStatusSchema } from "../../shared/validators";
 import * as controller from "./applications.controller";
 
 const router = Router();
 
-router.use(authenticate);
+router.use(authenticate, generalRateLimit);
 
 // Nurse: list my applications
 router.get("/me", paginate, controller.listMyApplications);
 
 // Admin: list all applications (filterable by status, job_id)
 router.get("/", requireRole("admin"), paginate, controller.listAllApplications);
+router.get("/stats", requireRole("admin"), controller.getApplicationStats);
 
 // Get single application (owner or admin)
 router.get("/:id", controller.getApplication);

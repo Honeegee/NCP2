@@ -3,6 +3,8 @@ import { passport } from "../../config/passport";
 import type { SSOProfile } from "../../config/passport";
 import { findOrCreateSSOUser } from "./sso.service";
 import { env } from "../../config/env";
+import { logger } from "../../shared/logger";
+import { ConfigurationError, DatabaseError, ExternalServiceError, BadRequestError } from "../../shared/errors";
 
 const VALID_PROVIDERS = ["google", "facebook", "linkedin"] as const;
 type Provider = (typeof VALID_PROVIDERS)[number];
@@ -11,36 +13,68 @@ function isValidProvider(p: string): p is Provider {
   return VALID_PROVIDERS.includes(p as Provider);
 }
 
-const backendUrl = `http://localhost:${env.PORT}`;
+const backendUrl = env.NODE_ENV === "production"
+  ? env.BACKEND_URL || `https://${process.env.RENDER_EXTERNAL_HOSTNAME}`
+  : `http://localhost:${env.PORT}`;
 
 // ---------------------------------------------------------------------------
 // LinkedIn OpenID Connect (manual flow — passport strategy is broken)
 // ---------------------------------------------------------------------------
 
 function initiateLinkedIn(_req: Request, res: Response): void {
+  if (!env.LINKEDIN_CLIENT_ID) {
+    res.status(500).json({ error: "LinkedIn OAuth is not configured" });
+    return;
+  }
+
+  const state = Math.random().toString(36).substring(2);
+
+  // Store state in a signed cookie for CSRF protection
+  res.cookie("sso_state", state, {
+    httpOnly: true,
+    secure: env.NODE_ENV === "production",
+    sameSite: "lax",
+    signed: true,
+    maxAge: 10 * 60 * 1000, // 10 minutes
+  });
+
   const params = new URLSearchParams({
     response_type: "code",
     client_id: env.LINKEDIN_CLIENT_ID,
     redirect_uri: `${backendUrl}/api/v1/auth/sso/linkedin/callback`,
     scope: "openid profile email",
-    state: Math.random().toString(36).substring(2),
+    state,
   });
   res.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`);
 }
 
 async function handleLinkedInCallback(req: Request, res: Response): Promise<void> {
   const code = req.query.code as string | undefined;
+  const state = req.query.state as string | undefined;
   const error = req.query.error_description as string | undefined;
+
+  // Verify state for CSRF protection
+  const savedState = req.signedCookies.sso_state;
+  res.clearCookie("sso_state");
+
+  if (!state || !savedState || state !== savedState) {
+    const msg = "Invalid OAuth state. Potential CSRF attack detected.";
+    res.redirect(`${env.FRONTEND_URL}/sso/callback?error=${encodeURIComponent(msg)}`);
+    return;
+  }
 
   if (error || !code) {
     const msg = error || "LinkedIn authentication was cancelled";
-    console.log(`[SSO] LinkedIn auth failed:`, msg);
     res.redirect(`${env.FRONTEND_URL}/sso/callback?error=${encodeURIComponent(msg)}`);
     return;
   }
 
   try {
     // 1. Exchange authorization code for access token
+    if (!env.LINKEDIN_CLIENT_ID || !env.LINKEDIN_CLIENT_SECRET) {
+      throw new ConfigurationError("LinkedIn OAuth credentials not configured");
+    }
+
     const tokenRes = await fetch("https://www.linkedin.com/oauth/v2/accessToken", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -56,7 +90,7 @@ async function handleLinkedInCallback(req: Request, res: Response): Promise<void
     if (!tokenRes.ok) {
       const errBody = await tokenRes.text();
       console.error("[SSO] LinkedIn token exchange failed:", errBody);
-      throw new Error("Failed to exchange LinkedIn authorization code");
+      throw new ExternalServiceError("Failed to exchange LinkedIn authorization code", { body: errBody });
     }
 
     const tokenData = (await tokenRes.json()) as { access_token: string };
@@ -69,7 +103,7 @@ async function handleLinkedInCallback(req: Request, res: Response): Promise<void
     if (!profileRes.ok) {
       const errBody = await profileRes.text();
       console.error("[SSO] LinkedIn profile fetch failed:", errBody);
-      throw new Error("Failed to fetch LinkedIn profile");
+      throw new ExternalServiceError("Failed to fetch LinkedIn profile", { body: errBody });
     }
 
     const profile = (await profileRes.json()) as {
@@ -80,7 +114,7 @@ async function handleLinkedInCallback(req: Request, res: Response): Promise<void
       picture?: string;
     };
 
-    console.log(`[SSO] LinkedIn profile fetched:`, profile.email || "no email");
+
 
     const ssoProfile: SSOProfile = {
       provider: "linkedin",
@@ -120,7 +154,7 @@ function redirectWithTokens(
     isNewUser: String(result.isNewUser),
   });
   const redirectUrl = `${env.FRONTEND_URL}/sso/callback?${params.toString()}`;
-  console.log(`[SSO] Success! Redirecting to:`, redirectUrl.substring(0, 100) + "...");
+
   res.redirect(redirectUrl);
 }
 
@@ -130,10 +164,9 @@ function redirectWithTokens(
 
 export function initiateSSO(req: Request, res: Response, next: NextFunction): void {
   const provider = String(req.params.provider);
-  console.log(`[SSO] Initiate called for provider: ${provider}`);
+
 
   if (!isValidProvider(provider)) {
-    console.log(`[SSO] Invalid provider: ${provider}`);
     res.status(400).json({ error: `Invalid SSO provider: ${provider}` });
     return;
   }
@@ -146,10 +179,10 @@ export function initiateSSO(req: Request, res: Response, next: NextFunction): vo
 
   const scopes: Record<string, string[]> = {
     google: ["profile", "email"],
-    facebook: ["email"],
+    facebook: ["public_profile", "email"],
   };
 
-  console.log(`[SSO] Redirecting to ${provider} with scopes:`, scopes[provider]);
+
   passport.authenticate(provider, {
     scope: scopes[provider],
     session: false,
@@ -175,11 +208,10 @@ export function handleSSOCallback(req: Request, res: Response, next: NextFunctio
   }
 
   passport.authenticate(provider, { session: false }, async (err: Error | null, ssoProfile: SSOProfile | false) => {
-    console.log(`[SSO] Callback hit for ${provider}. Error:`, err?.message || "none", "Profile:", ssoProfile ? ssoProfile.email : "false/null");
     try {
       if (err || !ssoProfile) {
         const errorMsg = err?.message || "Authentication failed";
-        console.log(`[SSO] Auth failed for ${provider}:`, errorMsg);
+
         res.redirect(`${env.FRONTEND_URL}/sso/callback?error=${encodeURIComponent(errorMsg)}`);
         return;
       }
@@ -193,7 +225,7 @@ export function handleSSOCallback(req: Request, res: Response, next: NextFunctio
       redirectWithTokens(res, result);
     } catch (error) {
       const message = error instanceof Error ? error.message : "SSO authentication failed";
-      console.error(`[SSO] Error in callback for ${provider}:`, message);
+      logger.error({ error: message, provider }, "SSO Callback Error");
       res.redirect(`${env.FRONTEND_URL}/sso/callback?error=${encodeURIComponent(message)}`);
     }
   })(req, res, next);

@@ -4,6 +4,7 @@ import { authenticate } from "../../middleware/auth";
 import { requireRole } from "../../middleware/roles";
 import { validate } from "../../middleware/validate";
 import { paginate } from "../../middleware/pagination";
+import { generalRateLimit } from "../../middleware/rate-limit";
 import {
   profileUpdateSchema,
   experienceSchema,
@@ -11,6 +12,7 @@ import {
   skillSchema,
   certificationSchema,
 } from "../../shared/validators";
+import { BadRequestError } from "../../shared/errors";
 import * as controller from "./nurses.controller";
 
 const router = Router();
@@ -19,15 +21,20 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
   fileFilter: (_req, file, cb) => {
     const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-    cb(null, allowed.includes(file.mimetype));
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new BadRequestError("Invalid file type. Only JPG, PNG, GIF, and WEBP images are allowed."));
+    }
   },
 });
 
-// All nurse routes require authentication
-router.use(authenticate);
+// All nurse routes require authentication and rate limiting
+router.use(authenticate, generalRateLimit);
 
 // --- Profile ---
 router.get("/", requireRole("admin"), paginate, controller.listNurses);
+router.get("/stats", requireRole("admin"), controller.getNurseStats);
 router.get("/me", controller.getMyProfile);
 router.get("/:id/matches", requireRole("admin"), controller.getNurseMatches);
 router.get("/:id", controller.getProfile);

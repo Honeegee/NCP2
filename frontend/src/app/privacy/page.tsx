@@ -9,7 +9,7 @@ export const metadata: Metadata = {
 
 export default function PrivacyPolicy() {
   return (
-    <div className="min-h-screen bg-[var(--background)] flex flex-col">
+    <div className="flex-1 bg-[var(--background)] flex flex-col">
       <Navbar />
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex-1">
         <div className="mb-8">

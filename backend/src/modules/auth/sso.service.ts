@@ -1,6 +1,7 @@
 import { createServerSupabase } from "../../shared/database";
 import { signAccessToken, signRefreshToken } from "./auth.service";
 import { getNovu } from "../../shared/novu";
+import { DatabaseError, NotFoundError } from "../../shared/errors";
 import type { SSOProfile } from "../../config/passport";
 
 interface SSOTokenPair {
@@ -61,7 +62,7 @@ export async function findOrCreateSSOUser(profile: SSOProfile): Promise<SSOToken
     .single();
 
   if (userError || !newUser) {
-    throw new Error("Failed to create user account");
+    throw new DatabaseError("Failed to create user account", userError);
   }
 
   // Create nurse profile with basic info from SSO
@@ -77,12 +78,13 @@ export async function findOrCreateSSOUser(profile: SSOProfile): Promise<SSOToken
       professional_status: "registered_nurse",
       years_of_experience: 0,
       profile_complete: false,
+      profile_picture_url: profile.profilePictureUrl || null,
     });
 
   if (profileError) {
     // Rollback user creation
     await supabase.from("users").delete().eq("id", newUser.id);
-    throw new Error("Failed to create nurse profile");
+    throw new DatabaseError("Failed to create nurse profile", profileError);
   }
 
   // Link SSO provider
@@ -105,7 +107,7 @@ export async function findOrCreateSSOUser(profile: SSOProfile): Promise<SSOToken
       });
       await novu.topics.addSubscribers("nurses", { subscribers: [newUser.id] });
     } catch (err) {
-      console.error("Novu subscriber identify failed:", err);
+      // Silent fail for non-critical service
     }
   }
 
@@ -136,7 +138,7 @@ async function loginExistingUser(userId: string, isNew: boolean): Promise<SSOTok
     .single();
 
   if (error || !user) {
-    throw new Error("User not found");
+    throw new NotFoundError("User not found");
   }
 
   // Get nurse profile for name
@@ -162,7 +164,7 @@ async function loginExistingUser(userId: string, isNew: boolean): Promise<SSOTok
         lastName,
       });
     } catch (err) {
-      console.error("Novu subscriber identify failed:", err);
+      // Silent fail
     }
   }
 

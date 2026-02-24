@@ -123,6 +123,8 @@ export const jobSchema = z.object({
   country: z.string().optional().default("Philippines"),
 });
 
+export const jobUpdateSchema = jobSchema.partial();
+
 export const applicationStatusSchema = z.object({
   status: z.enum(["pending", "reviewed", "accepted", "rejected"]),
 });

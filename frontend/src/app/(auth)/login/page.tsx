@@ -39,8 +39,11 @@ function isPasswordValid(rules: ReturnType<typeof validatePassword>) {
 export default function LoginPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
+      <div className="flex-1 flex items-center justify-center">
+        <div
+          className="animate-spin h-8 w-8 border-4 border-t-transparent rounded-full"
+          style={{ borderColor: "var(--primary)", borderTopColor: "transparent" }}
+        />
       </div>
     }>
       <UnifiedAuthForm />
@@ -113,7 +116,7 @@ function UnifiedAuthForm() {
     setLoading(true);
     try {
       const { role, isNewUser } = await login(email.trim(), password);
-      const destination = callbackUrl || (role === "admin" ? "/admin" : isNewUser ? "/profile?tour=welcome" : "/dashboard");
+      const destination = callbackUrl || ((role === "admin" || role === "superadmin") ? "/admin" : isNewUser ? "/profile?tour=welcome" : "/dashboard");
       router.push(destination);
       router.refresh();
     } catch (err) {
@@ -133,13 +136,9 @@ function UnifiedAuthForm() {
       toast.error("Please fix the password requirements below.");
       return;
     }
-
     setLoading(true);
     try {
-      await api.post("/auth/register", {
-        email: email.trim(),
-        password,
-      });
+      await api.post("/auth/register", { email: email.trim(), password });
       setShowVerify(true);
     } catch (regErr) {
       const regMessage = regErr instanceof ApiError ? regErr.message : "Something went wrong";
@@ -150,11 +149,8 @@ function UnifiedAuthForm() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (mode === "signin") {
-      await handleSignIn();
-    } else {
-      await handleSignUp();
-    }
+    if (mode === "signin") await handleSignIn();
+    else await handleSignUp();
   };
 
   const handleResendVerification = async () => {
@@ -177,18 +173,23 @@ function UnifiedAuthForm() {
   };
 
   return (
-    <div className="min-h-screen flex relative">
-      {/* Back button - absolute upper right corner */}
+    <div className="flex-1 flex relative">
+
+      {/* Back button */}
       <div className="absolute top-4 right-4 z-50">
-        <Link href="/" className="flex items-center gap-2 text-emerald-700 no-underline text-sm font-semibold hover:text-emerald-900">
+        <Link
+          href="/"
+          className="flex items-center gap-2 no-underline text-sm font-semibold transition-colors"
+          style={{ color: "var(--primary)" }}
+        >
           <ArrowLeft className="h-4 w-4" />
           Back to home
         </Link>
       </div>
 
-      {/* Left Panel - Branding */}
-      <div className="hidden lg:flex lg:w-1/2 gradient-primary relative overflow-hidden">
-        {/* Background image */}
+      {/* ── Left Panel — Branding ── */}
+      <div className="hidden lg:flex lg:w-1/2 relative overflow-hidden">
+        {/* Hero photo */}
         <div className="absolute inset-0">
           <Image
             src="/hero.png"
@@ -196,98 +197,106 @@ function UnifiedAuthForm() {
             fill
             className="object-cover opacity-60"
             priority
-            onError={(e) => {
-              e.currentTarget.style.display = 'none';
-            }}
+            onError={(e) => { e.currentTarget.style.display = "none"; }}
           />
         </div>
 
-         <div className="absolute inset-0 bg-gradient-to-r from-emerald-950/90 via-emerald-900/60 to-transparent" />
-        <div className="absolute inset-0">
-          <div className="absolute -top-40 -right-40 w-96 h-96 bg-white/5 rounded-full blur-3xl" />
-          <div className="absolute -bottom-40 -left-40 w-96 h-96 bg-white/5 rounded-full blur-3xl" />
-          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-white/3 rounded-full blur-3xl" />
-        </div>
+        {/* Gradient overlay — same rgba values as homepage hero */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(135deg,
+              rgba(13, 47, 53, 0.93)  0%,
+              rgba(21, 78, 88, 0.80)  45%,
+              rgba(26, 96, 104, 0.55) 100%
+            )`,
+          }}
+        />
 
-        <div className="relative z-10 flex flex-col p-6 text-white w-full">
-          {/* Logo - upper left */}
-          <div className="flex items-center gap-3">
-            <Image
-              src="/ncpLogoname.png"
-              alt="Nurse Care Pro"
-              width={220}
-              height={60}
-              className="h-14 w-auto object-contain drop-shadow-[0_0_12px_rgba(255,255,255,0.5)]"
-              priority
-              unoptimized
-            />
-          </div>
+        {/* Decorative blobs */}
+        <div className="absolute -top-40 -right-40 w-96 h-96 rounded-full blur-3xl" style={{ background: "rgba(255,255,255,0.04)" }} />
+        <div className="absolute -bottom-40 -left-40 w-96 h-96 rounded-full blur-3xl" style={{ background: "rgba(255,255,255,0.04)" }} />
+
+        {/* Logo */}
+        <div className="relative z-10 flex flex-col items-start p-8 text-white w-full">
+          <Image
+            src="/logo.png"
+            alt="Nurse Care Pro"
+            width={220}
+            height={60}
+            className="h-14 w-auto object-contain drop-shadow-[0_0_12px_rgba(255,255,255,0.5)]"
+            priority
+            unoptimized
+          />
         </div>
       </div>
 
-      {/* Right Panel - Form */}
-      <div className="w-full lg:w-1/2 flex flex-col">
+      {/* ── Right Panel — Form ── */}
+      <div className="w-full lg:w-1/2 flex flex-col" style={{ background: "var(--background)" }}>
         <div className="flex-1 flex items-center justify-center px-4 sm:px-8 py-8">
           <div className="w-full max-w-md">
 
-            {/* Verified success banner */}
+            {/* Email verified banner */}
             {verified && !showVerify && (
-              <div className="mb-6 flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 p-3">
-                <CheckCircle className="h-4 w-4 text-green-600 shrink-0" />
-                <p className="text-sm text-green-700">Email verified successfully! You can now sign in.</p>
+              <div
+                className="mb-6 flex items-center gap-2 rounded-lg p-3 border"
+                style={{
+                  background: "var(--secondary)",
+                  borderColor: "var(--primary-lighter)",
+                  color: "var(--primary-dark)",
+                }}
+              >
+                <CheckCircle className="h-4 w-4 shrink-0" style={{ color: "var(--success)" }} />
+                <p className="text-sm">Email verified successfully! You can now sign in.</p>
               </div>
             )}
 
             {showVerify ? (
-              /* ========== VERIFY EMAIL ========== */
+              /* ── Verify Email ── */
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold">Check Your Email</h2>
-                  <p className="text-muted-foreground mt-1">We sent a verification link to {email}</p>
+                  <h2 className="text-2xl font-bold" style={{ color: "var(--foreground)" }}>
+                    Check Your Email
+                  </h2>
+                  <p className="mt-1 text-sm" style={{ color: "var(--muted-foreground)" }}>
+                    We sent a verification link to {email}
+                  </p>
                 </div>
                 <div className="text-center space-y-4">
-                  <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
-                    <Mail className="h-8 w-8 text-primary" />
+                  <div
+                    className="mx-auto w-16 h-16 rounded-full flex items-center justify-center"
+                    style={{ background: "var(--secondary)" }}
+                  >
+                    <Mail className="h-8 w-8" style={{ color: "var(--primary)" }} />
                   </div>
-                  <p className="text-sm text-muted-foreground">
+                  <p className="text-sm" style={{ color: "var(--muted-foreground)" }}>
                     Click the verification link in the email to activate your account. The link expires in 24 hours.
                   </p>
                   <div className="pt-2 space-y-3">
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={handleResendVerification}
-                      disabled={loading}
-                    >
+                    <Button variant="outline" className="w-full" onClick={handleResendVerification} disabled={loading}>
                       {loading ? "Sending..." : "Resend Verification Email"}
                     </Button>
-                    <Button
-                      variant="ghost"
-                      className="w-full"
-                      onClick={() => setShowVerify(false)}
-                    >
+                    <Button variant="ghost" className="w-full" onClick={() => setShowVerify(false)}>
                       Back
                     </Button>
                   </div>
                 </div>
               </div>
             ) : (
-              /* ========== MAIN FORM ========== */
+              /* ── Main Form ── */
               <div className="space-y-6">
                 <div>
-                  <h2 className="text-2xl font-bold">
+                  <h2 className="text-2xl font-bold" style={{ color: "var(--foreground)" }}>
                     {mode === "signin" ? "Welcome Back" : "Create Account"}
                   </h2>
-                  <p className="text-muted-foreground mt-1">
-                    {mode === "signin"
-                      ? "Sign in to your account"
-                      : "Sign up to get started"
-                    }
+                  <p className="mt-1 text-sm" style={{ color: "var(--muted-foreground)" }}>
+                    {mode === "signin" ? "Sign in to your account" : "Sign up to get started"}
                   </p>
                 </div>
 
-                {/* Email + Password form */}
                 <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+
+                  {/* Email */}
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
                     <Input
@@ -297,23 +306,23 @@ function UnifiedAuthForm() {
                       className={`h-11 ${touched.email && fieldErrors.email ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                       autoComplete="email"
                       value={email}
-                      onChange={(e) => {
-                        setEmail(e.target.value);
-                        if (touched.email) validateField("email", e.target.value);
-                      }}
+                      onChange={(e) => { setEmail(e.target.value); if (touched.email) validateField("email", e.target.value); }}
                       onBlur={() => handleBlur("email")}
                     />
                     {touched.email && fieldErrors.email && (
                       <p className="text-xs text-red-500">{fieldErrors.email}</p>
                     )}
                   </div>
+
+                  {/* Password */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label htmlFor="password">Password</Label>
                       {mode === "signin" && (
                         <Link
                           href="/forgot-password"
-                          className="text-sm text-primary hover:underline"
+                          className="text-sm hover:underline"
+                          style={{ color: "var(--primary)" }}
                         >
                           Forgot password?
                         </Link>
@@ -326,10 +335,7 @@ function UnifiedAuthForm() {
                       className={`h-11 ${touched.password && fieldErrors.password ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                       autoComplete={mode === "signin" ? "current-password" : "new-password"}
                       value={password}
-                      onChange={(e) => {
-                        setPassword(e.target.value);
-                        if (touched.password) validateField("password", e.target.value);
-                      }}
+                      onChange={(e) => { setPassword(e.target.value); if (touched.password) validateField("password", e.target.value); }}
                       onBlur={() => handleBlur("password")}
                     />
                     {touched.password && fieldErrors.password && (
@@ -338,17 +344,17 @@ function UnifiedAuthForm() {
                     {mode === "signup" && password.length > 0 && !isPasswordValid(passwordRules) && (
                       <p className="text-xs text-red-500">
                         {!passwordRules.minLength ? "Must be at least 8 characters" :
-                         !passwordRules.uppercase ? "Must include an uppercase letter" :
-                         !passwordRules.lowercase ? "Must include a lowercase letter" :
-                         !passwordRules.number ? "Must include a number" :
-                         !passwordRules.special ? "Must include a special character (!@#$%...)" :
-                         !passwordRules.noRepeat ? "Cannot have 4+ repeated characters" :
-                         !passwordRules.notWeak ? "Password is too common" : ""}
+                          !passwordRules.uppercase ? "Must include an uppercase letter" :
+                            !passwordRules.lowercase ? "Must include a lowercase letter" :
+                              !passwordRules.number ? "Must include a number" :
+                                !passwordRules.special ? "Must include a special character (!@#$%...)" :
+                                  !passwordRules.noRepeat ? "Cannot have 4+ repeated characters" :
+                                    !passwordRules.notWeak ? "Password is too common" : ""}
                       </p>
                     )}
                   </div>
 
-                  {/* Confirm Password - sign up only */}
+                  {/* Confirm Password — sign up only */}
                   {mode === "signup" && (
                     <div className="space-y-2">
                       <Label htmlFor="confirmPassword">Confirm Password</Label>
@@ -359,10 +365,7 @@ function UnifiedAuthForm() {
                         className={`h-11 ${touched.confirmPassword && fieldErrors.confirmPassword ? "border-red-500 focus-visible:ring-red-500" : ""}`}
                         autoComplete="new-password"
                         value={confirmPassword}
-                        onChange={(e) => {
-                          setConfirmPassword(e.target.value);
-                          if (touched.confirmPassword) validateField("confirmPassword", e.target.value);
-                        }}
+                        onChange={(e) => { setConfirmPassword(e.target.value); if (touched.confirmPassword) validateField("confirmPassword", e.target.value); }}
                         onBlur={() => handleBlur("confirmPassword")}
                       />
                       {touched.confirmPassword && fieldErrors.confirmPassword && (
@@ -381,25 +384,31 @@ function UnifiedAuthForm() {
                         <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
                         Please wait...
                       </span>
-                    ) : mode === "signin" ? (
-                      "Sign In"
-                    ) : (
-                      "Create Account"
-                    )}
+                    ) : mode === "signin" ? "Sign In" : "Create Account"}
                   </Button>
 
-                  <p className="text-sm text-center text-muted-foreground">
+                  <p className="text-sm text-center" style={{ color: "var(--muted-foreground)" }}>
                     {mode === "signin" ? (
                       <>
                         Don&apos;t have an account?{" "}
-                        <button type="button" onClick={() => switchMode("signup")} className="text-primary hover:underline font-medium">
+                        <button
+                          type="button"
+                          onClick={() => switchMode("signup")}
+                          className="font-medium hover:underline"
+                          style={{ color: "var(--primary)" }}
+                        >
                           Sign Up
                         </button>
                       </>
                     ) : (
                       <>
                         Already have an account?{" "}
-                        <button type="button" onClick={() => switchMode("signin")} className="text-primary hover:underline font-medium">
+                        <button
+                          type="button"
+                          onClick={() => switchMode("signin")}
+                          className="font-medium hover:underline"
+                          style={{ color: "var(--primary)" }}
+                        >
                           Sign In
                         </button>
                       </>
@@ -410,14 +419,18 @@ function UnifiedAuthForm() {
                 {/* Divider */}
                 <div className="relative">
                   <div className="absolute inset-0 flex items-center">
-                    <span className="w-full border-t" />
+                    <span className="w-full border-t" style={{ borderColor: "var(--border)" }} />
                   </div>
                   <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-background px-2 text-muted-foreground">or</span>
+                    <span
+                      className="px-2"
+                      style={{ background: "var(--background)", color: "var(--muted-foreground)" }}
+                    >
+                      or
+                    </span>
                   </div>
                 </div>
 
-                {/* SSO Buttons */}
                 <SSOButtons />
               </div>
             )}

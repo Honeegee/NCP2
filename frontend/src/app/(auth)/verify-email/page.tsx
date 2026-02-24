@@ -12,7 +12,7 @@ import Link from "next/link";
 export default function VerifyEmailPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-muted/30">
+      <div className="flex-1 flex items-center justify-center bg-muted/30">
         <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
       </div>
     }>
@@ -24,13 +24,18 @@ export default function VerifyEmailPage() {
 function VerifyEmailContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  const [status, setStatus] = useState<"verifying" | "success" | "error">("verifying");
-  const [errorMessage, setErrorMessage] = useState("");
+  
+  // Compute initial status based on token availability to avoid setState in useEffect
+  const [status, setStatus] = useState<"verifying" | "success" | "error">(
+    token ? "verifying" : "error"
+  );
+  const [errorMessage, setErrorMessage] = useState(
+    token ? "" : "No verification token provided."
+  );
 
   useEffect(() => {
     if (!token) {
-      setStatus("error");
-      setErrorMessage("No verification token provided.");
+      // Already handled by initial state
       return;
     }
 
@@ -50,7 +55,7 @@ function VerifyEmailContent() {
   }, [token]);
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex-1 flex flex-col">
       <Navbar />
 
       <div className="flex-1 flex items-center justify-center bg-muted/30 px-3 sm:px-4">

@@ -27,7 +27,7 @@ type ResetPasswordFormData = z.infer<typeof resetPasswordFormSchema>;
 export default function ResetPasswordPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="flex-1 flex items-center justify-center">
         <div className="animate-spin h-8 w-8 border-4 border-primary border-t-transparent rounded-full" />
       </div>
     }>
@@ -80,7 +80,7 @@ function ResetPasswordForm() {
   };
 
   return (
-    <div className="min-h-screen flex relative">
+    <div className="flex-1 flex relative">
       {/* Back button */}
       <div className="absolute top-4 right-4 z-50">
         <Link href="/login" className="flex items-center gap-2 text-emerald-700 no-underline text-sm font-semibold hover:text-emerald-900">
@@ -111,10 +111,10 @@ function ResetPasswordForm() {
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-white/3 rounded-full blur-3xl" />
         </div>
 
-        <div className="relative z-10 flex flex-col p-6 text-white w-full">
+        <div className="relative z-10 flex flex-col items-start p-6 text-white w-full">
           <div className="flex items-center gap-3">
             <Image
-              src="/ncpLogoname.png"
+              src="/logo.png"
               alt="Nurse Care Pro"
               width={220}
               height={60}

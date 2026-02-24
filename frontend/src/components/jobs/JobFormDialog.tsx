@@ -17,6 +17,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectOption } from "@/components/ui/select";
 import { Loader2, Save, AlertCircle, Briefcase } from "lucide-react";
 import type { Job, EmploymentType } from "@/types";
+import { Country } from "country-state-city";
 
 interface JobFormData {
   title: string;
@@ -247,16 +248,9 @@ export function JobFormDialog({
                       value={formData.country}
                       onChange={(e) => updateField("country", e.target.value)}
                     >
-                      <SelectOption value="Philippines">Philippines</SelectOption>
-                      <SelectOption value="USA">USA</SelectOption>
-                      <SelectOption value="UK">UK</SelectOption>
-                      <SelectOption value="Canada">Canada</SelectOption>
-                      <SelectOption value="Australia">Australia</SelectOption>
-                      <SelectOption value="Singapore">Singapore</SelectOption>
-                      <SelectOption value="UAE">UAE</SelectOption>
-                      <SelectOption value="Saudi Arabia">Saudi Arabia</SelectOption>
-                      <SelectOption value="Germany">Germany</SelectOption>
-                      <SelectOption value="Japan">Japan</SelectOption>
+                      {Country.getAllCountries().map((c) => (
+                        <SelectOption key={c.isoCode} value={c.name}>{c.name}</SelectOption>
+                      ))}
                     </Select>
                   </div>
                 </div>

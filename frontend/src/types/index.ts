@@ -1,4 +1,4 @@
-export type UserRole = "nurse" | "admin";
+export type UserRole = "nurse" | "admin" | "superadmin";
 
 export interface User {
   id: string;
@@ -207,4 +207,13 @@ export interface NurseFullProfile extends NurseProfile {
   skills: NurseSkill[];
   resumes: Resume[];
   user: Pick<User, "email" | "role">;
+}
+export interface AdminProfile {
+  id: string;
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  phone: string | null;
+  profile_picture_url: string | null;
+  updated_at: string;
 }

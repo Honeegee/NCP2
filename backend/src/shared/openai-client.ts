@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { env } from "../config/env";
 import { createServerSupabase } from "./database";
+import { ConfigurationError } from "./errors";
 
 const EMBEDDING_MODEL = "text-embedding-3-small";
 const EMBEDDING_DIMENSIONS = 1536;
@@ -76,7 +77,7 @@ export async function getEmbeddings(
   if (uncached.length > 0) {
     const openai = getOpenAI();
     if (!openai) {
-      throw new Error("OpenAI client not available");
+      throw new ConfigurationError("OpenAI client not available. Please check your OPENAI_API_KEY.");
     }
 
     // Batch in chunks of 2048 (OpenAI limit)
